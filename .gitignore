@@ -4,3 +4,8 @@ Prosposal Skripsi - Revisi Sempro.pdf
 *.csv
 *.xlsx
 .venv
+venv/
+frontend/vendor/
+frontend/node_modules/
+frontend/.env
+frontend/database/*.sqlite
