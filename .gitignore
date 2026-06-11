@@ -3,6 +3,9 @@ Prosposal Skripsi - Revisi Sempro.pdf
 *.joblib
 *.csv
 *.xlsx
+*.pdf
+*.docm
+*.docx
 .venv
 venv/
 frontend/vendor/

@@ -4,7 +4,7 @@ import re
 import os
 
 # --- CONFIGURATION ---
-DATA_PATH = "../DATA MENTAH.xlsx"
+DATA_PATH = "../../DATA MENTAH.xlsx"
 MODEL_PATH = "slb_model.joblib"
 TFIDF_PATH = "tfidf_vectorizer.joblib"
 ENCODERS_PATH = "label_encoders.joblib"

@@ -21,19 +21,19 @@ ENCODERS_PATH = "label_encoders.joblib"
 # Indonesian Stopwords (Standard list + Domain Specific + Student Names)
 STOPWORDS = [
     # Standard stopwords
-    'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'juga', 'untuk', 'pada', 'dengan', 
-    'adalah', 'yang', 'saya', 'kami', 'anda', 'mereka', 'ia', 'dia', 'kita',
-    'bisa', 'dapat', 'harus', 'akan', 'sudah', 'telah', 'sedang', 'ingin',
-    'ada', 'tidak', 'bukan', 'hanya', 'saja', 'atau', 'namun', 'tetapi',
+    'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'juga', 'untuk', 'pada', 'dengan',
+    'adalah', 'yang', 'saya', 'kami', 'anda', 'mereka', 'ia', 'dia', 'kita', 
+    'dapat', 'harus', 'akan', 'sudah', 'telah', 'sedang', 'ingin',
+    'ada', 'bukan', 'hanya', 'saja', 'atau', 'namun', 'tetapi',
     'oleh', 'seperti', 'maka', 'jika', 'karena', 'sehingga', 'bahwa',
-    'hal', 'secara', 'tersebut', 'dalam', 'atas', 'bawah', 'serta', 'bagi',
+    'hal', 'secara', 'tersebut', 'dalam', 'atas', 'bawah', 'serta', 'bagi', 'setelah',
     # Domain-specific stopwords (Sistem Penilaian SLB)
     'peserta', 'didik', 'siswa', 'aspek', 'kegiatan', 'aktivitas', 'cara', 
     'berikan', 'gunakan', 'saran', 'hari',
     # Nama Siswa (Ditemukan di dalam teks deskripsi capaian)
     'dafa', 'dzikri', 'eria', 'arif', 'arifin', 'rama', 'fadil', 'afif', 
     'azzam', 'dewi', 'faiz', 'ahmad', 'bilqis', 'rizky', 'mia', 'andreansyah', 
-    'rahman', 'khansa', 'robi'
+    'rahman', 'khansa', 'robi', 'roby'
 ]
 
 def clean_text(text):

@@ -10,7 +10,7 @@ from sklearn.model_selection import GridSearchCV
 import shap
 
 # --- CONFIGURATION ---
-DATA_PATH = "../DATA MENTAH.xlsx"
+DATA_PATH = "../../DATA MENTAH.xlsx"
 STOPWORDS = [
     'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'juga', 'untuk', 'pada', 'dengan', 
     'adalah', 'yang', 'saya', 'kami', 'anda', 'mereka', 'ia', 'dia', 'kita',
@@ -88,10 +88,15 @@ def run_manual_breakdown():
     # --- RANDOM FOREST MANUAL (VOTING) ---
     print("Extracting Random Forest voting breakdown...")
     # We use the trained model for this
-    if os.path.exists("slb_model.joblib"):
-        model = joblib.load("slb_model.joblib")
-        tfidf_vec = joblib.load("tfidf_vectorizer.joblib")
-        encoders = joblib.load("label_encoders.joblib")
+    model_dir = "../core"
+    model_path = os.path.join(model_dir, "slb_model.joblib")
+    tfidf_path = os.path.join(model_dir, "tfidf_vectorizer.joblib")
+    encoders_path = os.path.join(model_dir, "label_encoders.joblib")
+    
+    if os.path.exists(model_path):
+        model = joblib.load(model_path)
+        tfidf_vec = joblib.load(tfidf_path)
+        encoders = joblib.load(encoders_path)
         
         X_tfidf = tfidf_vec.transform(subset['clean_X2']).toarray()
         X_nilai = subset[['X1 (Nilai)']].values
@@ -159,7 +164,7 @@ def run_manual_breakdown():
 
     # --- SHAP MANUAL (ADDITIVITY) ---
     print("Calculating SHAP additivity...")
-    if os.path.exists("slb_model.joblib"):
+    if os.path.exists(model_path):
         explainer = shap.TreeExplainer(model.estimators_[0])
         shap_values = explainer.shap_values(X)
         base_value = explainer.expected_value
