@@ -39,10 +39,9 @@ def export_results():
         print(f"Processing sheet: {sheet}")
         df = pd.read_excel(xl, sheet_name=sheet)
         
-        # Standardize column names
-        df.rename(columns={'Aspek': 'Aspek / Mapel', 'Nilai': 'X1 (Nilai)'}, inplace=True)
+        # Standardize column names (already clean in source file)
         
-        required_cols = ['Aspek / Mapel', 'X1 (Nilai)', 'X2 (Deskripsi Capaian)', 'Y (Label)']
+        required_cols = ['Aspek / Mapel', 'Nilai', 'Deskripsi Penilaian', 'Label']
         if not all(col in df.columns for col in required_cols):
             print(f"Skipping sheet {sheet}: Required columns missing.")
             continue
@@ -52,19 +51,19 @@ def export_results():
             df['Siswa'] = sheet
 
         # Process each row
-        rows_to_process = df.dropna(subset=['X2 (Deskripsi Capaian)']).copy()
+        rows_to_process = df.dropna(subset=['Deskripsi Penilaian']).copy()
         
         if rows_to_process.empty:
             continue
 
         # Prepare features
-        rows_to_process['clean_X2'] = rows_to_process['X2 (Deskripsi Capaian)'].apply(clean_text)
+        rows_to_process['clean_X2'] = rows_to_process['Deskripsi Penilaian'].apply(clean_text)
         X_tfidf = tfidf.transform(rows_to_process['clean_X2']).toarray()
         
         # Combine with Nilai
         import numpy as np
-        rows_to_process['X1 (Nilai)'] = pd.to_numeric(rows_to_process['X1 (Nilai)'], errors='coerce').fillna(0)
-        X_nilai = rows_to_process[['X1 (Nilai)']].values
+        rows_to_process['Nilai'] = pd.to_numeric(rows_to_process['Nilai'], errors='coerce').fillna(0)
+        X_nilai = rows_to_process[['Nilai']].values
         X = np.hstack([X_nilai, X_tfidf])
         
         # Predict
@@ -79,7 +78,7 @@ def export_results():
             lambda x: "BENAR" if str(x['Aspek / Mapel']).strip() == str(x['Prediksi Aspek']).strip() else "SALAH", axis=1
         )
         rows_to_process['Status Label'] = rows_to_process.apply(
-            lambda x: "BENAR" if str(x['Y (Label)']).strip() == str(x['Prediksi Label']).strip() else "SALAH", axis=1
+            lambda x: "BENAR" if str(x['Label']).strip() == str(x['Prediksi Label']).strip() else "SALAH", axis=1
         )
 
         all_results.append(rows_to_process)
@@ -92,7 +91,7 @@ def export_results():
     
     # Reorder columns for readability
     cols = ['Siswa', 'Aspek / Mapel', 'Prediksi Aspek', 'Status Aspek', 
-            'X1 (Nilai)', 'X2 (Deskripsi Capaian)', 'Y (Label)', 'Prediksi Label', 'Status Label']
+            'Nilai', 'Deskripsi Penilaian', 'Label', 'Prediksi Label', 'Status Label']
     
     # Only keep existing columns
     cols = [c for c in cols if c in final_df.columns]

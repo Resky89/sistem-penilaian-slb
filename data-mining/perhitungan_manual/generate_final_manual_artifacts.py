@@ -15,7 +15,7 @@ from openpyxl.utils import get_column_letter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import RandomizedSearchCV, train_test_split
 from sklearn.metrics import accuracy_score
 
 BASE = Path(r"D:/projects/Sistem-Penilaian-SLB")
@@ -51,9 +51,55 @@ def clean_text(text):
     words = [w for w in text.split() if len(w) > 2 and w not in STOPWORDS]
     return " ".join(words)
 
+def recover_missing_values(df_split, raw_path):
+    if not Path(raw_path).exists():
+        return df_split
+    xl_raw = pd.ExcelFile(raw_path)
+    raw_sheets = {}
+    for sheet in xl_raw.sheet_names:
+        df_raw = pd.read_excel(xl_raw, sheet_name=sheet)
+        df_raw = df_raw.copy()
+        if 'Sumber Data' not in df_raw.columns:
+            df_raw['Sumber Data'] = sheet.replace('Data Mentah ', '')
+        raw_sheets[sheet.replace('Data Mentah ', '')] = df_raw
+
+    df_split = df_split.copy()
+    for idx, row in df_split.iterrows():
+        student = row.get('Nama Siswa', '')
+        if not isinstance(student, str) or not student:
+            student = row.get('Sumber Data', '')
+        if student in raw_sheets:
+            raw_df = raw_sheets[student]
+            match_mask = (raw_df['Label'].astype(str).str.strip() == str(row['Label']).strip())
+            
+            raw_val_str = raw_df['Nilai'].astype(str).str.strip().str.replace('.0', '', regex=False)
+            split_val_str = str(row['Nilai']).strip().replace('.0', '')
+            match_mask = match_mask & (raw_val_str == split_val_str)
+            
+            matches = raw_df[match_mask]
+            if len(matches) == 1:
+                recovered_row = matches.iloc[0]
+                if pd.isnull(row['Aspek / Mapel']) or str(row['Aspek / Mapel']) == 'nan':
+                    df_split.at[idx, 'Aspek / Mapel'] = recovered_row['Aspek / Mapel']
+                if pd.isnull(row['Deskripsi Penilaian']) or str(row['Deskripsi Penilaian']) == 'nan':
+                    df_split.at[idx, 'Deskripsi Penilaian'] = recovered_row['Deskripsi Penilaian']
+            elif len(matches) > 1:
+                if not pd.isnull(row['Deskripsi Penilaian']) and str(row['Deskripsi Penilaian']) != 'nan':
+                    narrowed = matches[matches['Deskripsi Penilaian'].astype(str).str.strip() == str(row['Deskripsi Penilaian']).strip()]
+                    if len(narrowed) == 1:
+                        recovered_row = narrowed.iloc[0]
+                        if pd.isnull(row['Aspek / Mapel']) or str(row['Aspek / Mapel']) == 'nan':
+                            df_split.at[idx, 'Aspek / Mapel'] = recovered_row['Aspek / Mapel']
+                elif not pd.isnull(row['Aspek / Mapel']) and str(row['Aspek / Mapel']) != 'nan':
+                    narrowed = matches[matches['Aspek / Mapel'].astype(str).str.strip() == str(row['Aspek / Mapel']).strip()]
+                    if len(narrowed) == 1:
+                        recovered_row = narrowed.iloc[0]
+                        if pd.isnull(row['Deskripsi Penilaian']) or str(row['Deskripsi Penilaian']) == 'nan':
+                            df_split.at[idx, 'Deskripsi Penilaian'] = recovered_row['Deskripsi Penilaian']
+    return df_split
+
 def normalize_cols(df):
     df = df.copy()
-    df.rename(columns={'Aspek':'Aspek / Mapel', 'Nilai':'X1 (Nilai)'}, inplace=True)
     if 'Sumber Data' not in df.columns:
         df['Sumber Data'] = df['Nama Siswa'] if 'Nama Siswa' in df.columns else ''
     return df
@@ -62,6 +108,8 @@ def load_data():
     if SPLIT_PATH.exists():
         tr = normalize_cols(pd.read_excel(SPLIT_PATH, sheet_name='Data Training (80%)'))
         te = normalize_cols(pd.read_excel(SPLIT_PATH, sheet_name='Data Testing (20%)'))
+        tr = recover_missing_values(tr, RAW_PATH)
+        te = recover_missing_values(te, RAW_PATH)
         tr['Set Data'] = 'Training'; te['Set Data'] = 'Testing'
         data = pd.concat([tr, te], ignore_index=True)
     else:
@@ -73,12 +121,12 @@ def load_data():
             rows.append(df)
         data = pd.concat(rows, ignore_index=True)
         data['Set Data'] = 'All'
-    need = ['Sumber Data','Aspek / Mapel','X1 (Nilai)','X2 (Deskripsi Capaian)','Y (Label)','Set Data']
+    need = ['Sumber Data','Aspek / Mapel','Nilai','Deskripsi Penilaian','Label','Set Data']
     data = data[[c for c in need if c in data.columns]].copy()
-    data['X1 (Nilai)'] = pd.to_numeric(data['X1 (Nilai)'], errors='coerce').fillna(0)
-    data = data.dropna(subset=['Aspek / Mapel','X2 (Deskripsi Capaian)','Y (Label)']).reset_index(drop=True)
+    data['Nilai'] = pd.to_numeric(data['Nilai'], errors='coerce').fillna(0)
+    data = data.dropna(subset=['Aspek / Mapel','Deskripsi Penilaian','Label']).reset_index(drop=True)
     data.insert(0, 'ID_Data', np.arange(1, len(data)+1))
-    data['Teks Bersih'] = data['X2 (Deskripsi Capaian)'].apply(clean_text)
+    data['Teks Bersih'] = data['Deskripsi Penilaian'].apply(clean_text)
     return data
 
 def gini(counts):
@@ -128,9 +176,19 @@ def add_sheet(wb, name, df):
 
 def build():
     data = load_data()
+    
+    if set(data['Set Data']) >= {'Training','Testing'}:
+        train_mask = data['Set Data'].eq('Training').values
+        test_mask = data['Set Data'].eq('Testing').values
+    else:
+        train_mask = np.ones(len(data), dtype=bool)
+        test_mask = np.zeros(len(data), dtype=bool)
+
     # IMPORTANT: this follows sklearn TfidfVectorizer defaults: use_idf=True, smooth_idf=True, norm='l2', sublinear_tf=False.
+    # Fit TF-IDF only on training data (train_mask)
     tfidf = TfidfVectorizer(max_features=50, min_df=2, max_df=0.85, ngram_range=(1,1), smooth_idf=True, norm='l2', use_idf=True, sublinear_tf=False)
-    X_tfidf = tfidf.fit_transform(data['Teks Bersih']).toarray()
+    tfidf.fit(data.loc[train_mask, 'Teks Bersih'])
+    X_tfidf = tfidf.transform(data['Teks Bersih']).toarray()
     words = list(tfidf.get_feature_names_out())
     tfidf_cols = [f'tfidf_{w}' for w in words]
 
@@ -140,44 +198,54 @@ def build():
         ohe = OneHotEncoder(sparse=False, handle_unknown='ignore')
     X_aspek = ohe.fit_transform(data[['Aspek / Mapel']])
     aspek_cols = [f'aspek_{a}' for a in ohe.categories_[0]]
-    X = np.hstack([data[['X1 (Nilai)']].values, X_tfidf, X_aspek])
-    feature_names = ['X1_Nilai'] + tfidf_cols + aspek_cols
-    le = LabelEncoder(); y = le.fit_transform(data['Y (Label)'].astype(str)); labels = list(le.classes_)
+    X = np.hstack([data[['Nilai']].values, X_tfidf, X_aspek])
+    feature_names = ['Nilai'] + tfidf_cols + aspek_cols
+    le = LabelEncoder(); y = le.fit_transform(data['Label'].astype(str)); labels = list(le.classes_)
 
-    if set(data['Set Data']) >= {'Training','Testing'}:
-        train_mask = data['Set Data'].eq('Training').values
-        test_mask = data['Set Data'].eq('Testing').values
-        X_train, X_test = X[train_mask], X[test_mask]
-        y_train, y_test = y[train_mask], y[test_mask]
-    else:
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_train, X_test = X[train_mask], X[test_mask]
+    y_train, y_test = y[train_mask], y[test_mask]
 
     rf = RandomForestClassifier(n_estimators=10, max_depth=3, min_samples_split=2, random_state=42, bootstrap=True)
     rf.fit(X_train, y_train)
     pred_all = rf.predict(X); proba_all = rf.predict_proba(X)
 
-    grid = GridSearchCV(RandomForestClassifier(random_state=42, bootstrap=True), {
-        'n_estimators':[10,50,100], 'max_depth':[3,5,10,None], 'min_samples_split':[2,5]
-    }, cv=3, scoring='accuracy', n_jobs=-1, return_train_score=True)
+    param_dist = {
+        'n_estimators': [100, 200, 300, 400, 500],
+        'max_depth': [10, 20, 30, None],
+        'min_samples_split': [2, 5, 10],
+        'min_samples_leaf': [1, 2, 4],
+        'max_features': ['sqrt', 'log2']
+    }
+    grid = RandomizedSearchCV(
+        estimator=RandomForestClassifier(random_state=42, bootstrap=True),
+        param_distributions=param_dist,
+        n_iter=20,
+        cv=5,
+        scoring='accuracy',
+        n_jobs=-1,
+        random_state=42,
+        return_train_score=True
+    )
     grid.fit(X_train, y_train)
 
     transformed = data.copy()
     transformed['Y_Encoded'] = y
     transformed['Y_Prediksi'] = le.inverse_transform(pred_all)
-    transformed['Prediksi_Benar'] = transformed['Y_Prediksi'].eq(transformed['Y (Label)'])
+    transformed['Prediksi_Benar'] = transformed['Y_Prediksi'].eq(transformed['Label'])
 
-    matrix = pd.concat([data[['ID_Data','Sumber Data','Aspek / Mapel','Set Data','X1 (Nilai)','Y (Label)','Teks Bersih']], pd.DataFrame(np.round(X_tfidf,6), columns=tfidf_cols)], axis=1)
+    matrix = pd.concat([data[['ID_Data','Sumber Data','Aspek / Mapel','Set Data','Nilai','Label','Teks Bersih']], pd.DataFrame(np.round(X_tfidf,6), columns=tfidf_cols)], axis=1)
 
     # Manual TF-IDF identical to sklearn: tf = raw count, idf = ln((1+N)/(1+df))+1, tfidf_raw=tf*idf, final=tfidf_raw/L2_norm.
     vocab_index = {w:i for i,w in enumerate(words)}
     docs = [d.split() for d in data['Teks Bersih']]
-    N = len(docs)
-    df = {w: sum(1 for doc in docs if w in set(doc)) for w in words}
-    idf = {w: math.log((1+N)/(1+df[w])) + 1 for w in words}
+    docs_train = [d.split() for d in data.loc[train_mask, 'Teks Bersih']]
+    N_train = len(docs_train)
+    df_train = {w: sum(1 for doc in docs_train if w in set(doc)) for w in words}
+    idf_train = {w: math.log((1+N_train)/(1+df_train[w])) + 1 for w in words}
     rows=[]
     for r, doc in enumerate(docs):
         counts = pd.Series(doc).value_counts().to_dict() if doc else {}
-        raw_vals = {w: counts.get(w,0) * idf[w] for w in words}
+        raw_vals = {w: counts.get(w,0) * idf_train[w] for w in words}
         l2 = math.sqrt(sum(v*v for v in raw_vals.values()))
         for w in words:
             c = counts.get(w,0)
@@ -187,8 +255,8 @@ def build():
                 py_val = float(X_tfidf[r, vocab_index[w]])
                 rows.append({
                     'ID_Data': int(data.loc[r,'ID_Data']), 'Siswa': data.loc[r,'Sumber Data'], 'Aspek / Mapel': data.loc[r,'Aspek / Mapel'],
-                    'Kata': w, 'tf raw (jumlah kata)': int(c), 'N': N, 'df(w)': int(df[w]),
-                    'idf sklearn = ln((1+N)/(1+df))+1': round(idf[w], 9),
+                    'Kata': w, 'tf raw (jumlah kata)': int(c), 'N': N_train, 'df(w)': int(df_train[w]),
+                    'idf sklearn = ln((1+N)/(1+df))+1': round(idf_train[w], 9),
                     'tf × idf': round(raw, 9), 'L2 norm dokumen': round(l2, 9),
                     'TF-IDF Manual Setelah L2': round(final, 9), 'TF-IDF Python sklearn': round(py_val, 9),
                     'Selisih': round(final - py_val, 12)
@@ -237,19 +305,19 @@ def build():
     tree_structures=pd.DataFrame(tree_structures); gini_all=pd.DataFrame(gini_all); tree_paths_all=pd.DataFrame(tree_paths_all); votes=pd.DataFrame(votes)
     vote_recap = votes.groupby(['ID_Data','Siswa','Aspek / Mapel','Prediksi Pohon']).size().reset_index(name='Jumlah Suara')
     final_vote = vote_recap.sort_values(['ID_Data','Jumlah Suara'], ascending=[True,False]).groupby('ID_Data').head(1).rename(columns={'Prediksi Pohon':'Hasil Voting'})
-    final_vote = final_vote.merge(data[['ID_Data','Y (Label)']], on='ID_Data', how='left')
-    final_vote['Benar/Salah'] = np.where(final_vote['Hasil Voting'].eq(final_vote['Y (Label)']), 'Benar', 'Salah')
+    final_vote = final_vote.merge(data[['ID_Data','Label']], on='ID_Data', how='left')
+    final_vote['Benar/Salah'] = np.where(final_vote['Hasil Voting'].eq(final_vote['Label']), 'Benar', 'Salah')
 
-    hpt = pd.DataFrame(grid.cv_results_)[['param_n_estimators','param_max_depth','param_min_samples_split','mean_train_score','mean_test_score','rank_test_score']].copy()
-    hpt.columns=['n_estimators','max_depth','min_samples_split','Mean Train Accuracy','Mean CV Accuracy','Ranking']
+    hpt = pd.DataFrame(grid.cv_results_)[['param_n_estimators','param_max_depth','param_min_samples_split','param_min_samples_leaf','param_max_features','mean_train_score','mean_test_score','rank_test_score']].copy()
+    hpt.columns = ['n_estimators','max_depth','min_samples_split','min_samples_leaf','max_features','Mean Train Accuracy','Mean CV Accuracy','Ranking']
     hpt=hpt.sort_values(['Ranking','n_estimators']).reset_index(drop=True)
     hpt['Status']=np.where(hpt['Ranking'].eq(1),'Best','-')
     hpt['Mean Train Accuracy']=hpt['Mean Train Accuracy'].round(9); hpt['Mean CV Accuracy']=hpt['Mean CV Accuracy'].round(9)
 
     # Multi-output view: label output for every aspek/mapel per student.
-    multi_long = transformed[['Sumber Data','Aspek / Mapel','X1 (Nilai)','Y (Label)','Y_Prediksi']].copy()
+    multi_long = transformed[['Sumber Data','Aspek / Mapel','Nilai','Label','Y_Prediksi']].copy()
     multi_long['Makna'] = 'Output label perkembangan untuk aspek/mapel ini'
-    actual = multi_long.pivot_table(index='Sumber Data', columns='Aspek / Mapel', values='Y (Label)', aggfunc='first')
+    actual = multi_long.pivot_table(index='Sumber Data', columns='Aspek / Mapel', values='Label', aggfunc='first')
     pred = multi_long.pivot_table(index='Sumber Data', columns='Aspek / Mapel', values='Y_Prediksi', aggfunc='first')
     actual.columns=[f'Aktual_{c}' for c in actual.columns]; pred.columns=[f'Prediksi_{c}' for c in pred.columns]
     multi_wide=pd.concat([actual,pred],axis=1).reset_index()
@@ -297,7 +365,7 @@ def add_explanation_sheet(wb):
     rows = [
         ['Urutan', 'Tahap', 'Yang dihitung', 'Buka sheet', 'Penjelasan singkat'],
         [1, 'Dataset awal', 'Data siswa, aspek/mapel, nilai, deskripsi, dan label asli.', 'DATASET KESELURUHAN', 'Ini sumber semua perhitungan. Kolom X1 adalah nilai angka, X2 adalah teks deskripsi capaian, Y adalah label target.'],
-        [2, 'Pembersihan teks', 'X2 diubah menjadi teks bersih.', 'Transformasi Data', 'Huruf dibuat kecil, tanda baca dibuang, kata umum/stopword dibuang. Hasilnya dipakai untuk TF-IDF.'],
+        [2, 'Pembersihan teks', 'Deskripsi Penilaian diubah menjadi teks bersih.', 'Transformasi Data', 'Huruf dibuat kecil, tanda baca dibuang, kata umum/stopword dibuang. Hasilnya dipakai untuk TF-IDF.'],
         [3, 'TF-IDF', 'Bobot setiap kata pada setiap dokumen.', 'TF-IDF Rumus Excel', 'Excel menghitung jumlah kata, df, idf, tf×idf, L2 norm, lalu TF-IDF akhir dengan rumus di kolom.'],
         [4, 'Random Forest - Gini', 'Kualitas split pada node pohon.', 'Gini Rumus Excel', 'Excel menghitung Gini parent, Gini kiri, Gini kanan, Gini split, dan gain dengan rumus.'],
         [5, 'Random Forest - Jalur pohon', 'Arah kiri/kanan setiap data di setiap node.', 'Jalur Semua Data', 'Jika nilai fitur <= threshold maka ke kiri, selain itu ke kanan, sampai leaf.'],
@@ -337,7 +405,7 @@ def add_tfidf_formula_sheet(wb, obj):
         ws.cell(idx, 4, row['Kata'])
         ws.cell(idx, 5, text_by_id.get(id_data, ''))
         ws.cell(idx, 6, f'=SUMPRODUCT(--(TEXTSPLIT(E{idx}," ")=D{idx}))')
-        ws.cell(idx, 7, f'=MAX($A$2:$A${last_row})')
+        ws.cell(idx, 7, int(row['N']))
         ws.cell(idx, 8, row['df(w)'])
         ws.cell(idx, 9, f'=LN((1+G{idx})/(1+H{idx}))+1')
         ws.cell(idx, 10, f'=F{idx}*I{idx}')
@@ -415,7 +483,7 @@ def add_voting_formula_sheet(wb, obj):
     headers = ['ID_Data', 'Siswa', 'Aspek / Mapel'] + [f'Pohon {i}' for i in range(1, 11)] + [f'Jumlah {label}' for label in labels] + ['Hasil Voting Excel', 'Label Aktual', 'Benar/Salah', 'Penjelasan']
     for c, h in enumerate(headers, 1): ws.cell(1, c, h)
     vote_pivot = obj['votes'].pivot_table(index=['ID_Data','Siswa','Aspek / Mapel'], columns='Pohon ke-', values='Prediksi Pohon', aggfunc='first').reset_index()
-    actual = obj['transformed'].set_index('ID_Data')['Y (Label)'].to_dict()
+    actual = obj['transformed'].set_index('ID_Data')['Label'].to_dict()
     for r, (_, row) in enumerate(vote_pivot.iterrows(), 2):
         id_data = int(row['ID_Data'])
         ws.cell(r, 1, id_data); ws.cell(r, 2, row['Siswa']); ws.cell(r, 3, row['Aspek / Mapel'])
@@ -467,7 +535,7 @@ def make_xlsx(obj):
     add_sheet(wb,'DATASET KESELURUHAN',obj['transformed'])
     add_sheet(wb,'Rumus dan Ringkasan',pd.concat([obj['summary'], pd.DataFrame([['','']], columns=obj['summary'].columns)], ignore_index=True))
     add_sheet(wb,'Rumus Detail',obj['formula'])
-    add_sheet(wb,'Transformasi Data',obj['transformed'][['ID_Data','Sumber Data','Aspek / Mapel','Set Data','X1 (Nilai)','X2 (Deskripsi Capaian)','Teks Bersih','Y (Label)','Y_Prediksi']])
+    add_sheet(wb,'Transformasi Data',obj['transformed'][['ID_Data','Sumber Data','Aspek / Mapel','Set Data','Nilai','Deskripsi Penilaian','Teks Bersih','Label','Y_Prediksi']])
     add_sheet(wb,'TF-IDF Matrix',obj['matrix'])
     add_sheet(wb,'TF-IDF Manual=Python',obj['tfidf_manual'])
     add_tfidf_formula_sheet(wb, obj)
@@ -485,7 +553,7 @@ def make_xlsx(obj):
     add_sheet(wb,'SHAP Per Fitur',obj['shap_rows'])
     add_shap_formula_sheet(wb, obj)
     # Sheets like the example: pohon 1, pohon 2, ... with dataset + gini + structure + paths.
-    data_small = obj['transformed'][['ID_Data','Sumber Data','Aspek / Mapel','X1 (Nilai)','Teks Bersih','Y (Label)','Y_Prediksi']]
+    data_small = obj['transformed'][['ID_Data','Sumber Data','Aspek / Mapel','Nilai','Teks Bersih','Label','Y_Prediksi']]
     for t in range(1, 11):
         ws=wb.create_sheet(f'pohon {t}')
         r=write_df(ws, data_small, 1, f'DATASET KESELURUHAN - POHON {t}')
@@ -525,10 +593,10 @@ def make_docx(obj):
     body.append(p('Dokumen ini dibuat ulang agar rumus TF-IDF manual sama dengan hasil Python sklearn dan agar rumus di Word ditulis menggunakan Equation. Excel pendamping memuat perhitungan seluruh data dan sheet pohon 1 sampai pohon 10 seperti contoh workbook decision tree/random forest.'))
     body.append(p('1. Penjelasan Variabel', 'Heading1', True))
     body.append(p('Output penelitian adalah label perkembangan untuk setiap aspek/mapel siswa, yaitu Baik, Cukup, dan Perlu Bimbingan. Aspek/mapel bukan output prediksi, melainkan konteks/input yang menunjukkan bagian penilaian siswa.'))
-    body.append(tbl(['Variabel','Simbol','Peran','Keterangan'], [['Nilai','X1','Input','Nilai kuantitatif aspek/mapel.'],['Deskripsi capaian','X2','Input','Teks penilaian guru.'],['Aspek/Mapel','A','Konteks/Input','Menentukan aspek yang sedang dinilai.'],['Label','Y','Output','Baik, Cukup, Perlu Bimbingan.']]))
+    body.append(tbl(['Variabel','Simbol','Peran','Keterangan'], [['Nilai','Nilai','Input','Nilai kuantitatif aspek/mapel.'],['Deskripsi Penilaian','Deskripsi Penilaian','Input','Teks penilaian guru.'],['Aspek/Mapel','A','Konteks/Input','Menentukan aspek yang sedang dinilai.'],['Label','Label','Output','Baik, Cukup, Perlu Bimbingan.']]))
     body.append(p('2. Transformasi Data', 'Heading1', True))
     body.append(p('Transformasi data dilakukan melalui case folding, cleansing, tokenizing, stopword removal, dan pembentukan teks bersih.'))
-    body.append(tbl(['ID_Data','Sumber Data','Aspek / Mapel','X1','Teks Bersih','Label'], obj['transformed'][['ID_Data','Sumber Data','Aspek / Mapel','X1 (Nilai)','Teks Bersih','Y (Label)']].values, 5))
+    body.append(tbl(['ID_Data','Sumber Data','Aspek / Mapel','X1','Teks Bersih','Label'], obj['transformed'][['ID_Data','Sumber Data','Aspek / Mapel','Nilai','Teks Bersih','Label']].values, 5))
     body.append(p('3. Perhitungan TF-IDF Sesuai Python sklearn', 'Heading1', True))
     body.append(p('Perbedaan nilai manual sebelumnya terjadi karena rumus manual memakai TF = n/Nd dan IDF = ln(N/df), sedangkan Python TfidfVectorizer secara default memakai raw count, smooth IDF, dan normalisasi L2. Karena itu rumus manual harus mengikuti sklearn sebagai berikut.'))
     body.append(eq('tf(w,d)=n(w,d)'))
@@ -549,16 +617,16 @@ def make_docx(obj):
     body.append(tbl(list(obj['gini_all'].columns), obj['gini_all'].values, 5))
     body.append(p('5. Perhitungan Voting', 'Heading1', True))
     body.append(eq('ŷ=mode{h_1(x),h_2(x),h_3(x),...,h_T(x)}'))
-    body.append(p(f"Contoh data ID {int(vrow['ID_Data'])}: hasil voting adalah {vrow['Hasil Voting']} dengan jumlah suara {int(vrow['Jumlah Suara'])}. Label aktual adalah {vrow['Y (Label)']}."))
+    body.append(p(f"Contoh data ID {int(vrow['ID_Data'])}: hasil voting adalah {vrow['Hasil Voting']} dengan jumlah suara {int(vrow['Jumlah Suara'])}. Label aktual adalah {vrow['Label']}."))
     body.append(tbl(list(obj['final_vote'].columns), obj['final_vote'].values, 8))
     body.append(p('6. Multi-Output Classification', 'Heading1', True))
     body.append(p('Multi-output classification digunakan untuk menghasilkan label perkembangan pada setiap aspek/mapel siswa. Bentuk output siswa ke-i adalah vektor label.'))
-    body.append(eq('Y_i=[y_i1,y_i2,y_i3,...,y_im]'))
-    body.append(eq('y_ij ∈ {Baik, Cukup, Perlu Bimbingan}'))
+    body.append(eq('Label_i=[label_i1,label_i2,label_i3,...,label_im]'))
+    body.append(eq('label_ij ∈ {Baik, Cukup, Perlu Bimbingan}'))
     body.append(tbl(list(obj['multi_long'].columns), obj['multi_long'].values, 8))
     body.append(p('7. Hyperparameter Tuning', 'Heading1', True))
     body.append(eq('Jumlah Kombinasi=|n_estimators|×|max_depth|×|min_samples_split|'))
-    body.append(p(f"Parameter terbaik berdasarkan GridSearchCV adalah {obj['grid'].best_params_} dengan skor CV {round(float(obj['grid'].best_score_),9)}."))
+    body.append(p(f"Parameter terbaik berdasarkan RandomizedSearchCV adalah {obj['grid'].best_params_} dengan skor CV {round(float(obj['grid'].best_score_),9)}."))
     body.append(tbl(list(obj['hpt'].columns), obj['hpt'].values, 8))
     body.append(p('8. Perhitungan SHAP', 'Heading1', True))
     body.append(p('SHAP digunakan untuk menjelaskan kontribusi fitur terhadap output klasifikasi. Rumus umum SHAP adalah:'))

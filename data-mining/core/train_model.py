@@ -3,7 +3,7 @@ import numpy as np
 import joblib
 import re
 import os
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.multioutput import MultiOutputClassifier
@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 
 # --- CONFIGURATION ---
 DATA_PATH = r"d:\projects\Sistem-Penilaian-SLB\DATA MENTAH.xlsx"
+SPLIT_PATH = r"d:\projects\Sistem-Penilaian-SLB\DATA_SPLIT_TRAIN_TEST.xlsx"
 MODEL_PATH = "slb_model.joblib"
 TFIDF_PATH = "tfidf_vectorizer.joblib"
 ENCODERS_PATH = "label_encoders.joblib"
@@ -48,50 +49,90 @@ def clean_text(text):
     words = [w for w in words if w not in STOPWORDS and len(w) > 2]
     return " ".join(words)
 
-def load_and_consolidate_data(file_path):
-    """Loads all sheets and consolidates them into a single DataFrame."""
-    print(f"Loading data from {file_path}...")
-    xl = pd.ExcelFile(file_path)
-    dfs = []
-    
-    for sheet in xl.sheet_names:
-        df = pd.read_excel(xl, sheet_name=sheet)
-        # Handle column naming inconsistencies
-        df.rename(columns={'Aspek': 'Aspek / Mapel', 'Nilai': 'X1 (Nilai)'}, inplace=True)
-        
-        # Ensure required columns exist
-        required_cols = ['Sumber Data', 'Aspek / Mapel', 'X1 (Nilai)', 'X2 (Deskripsi Capaian)', 'Y (Label)']
-        
-        # If Sumber Data is missing, use sheet name
-        if 'Sumber Data' not in df.columns and 'Siswa' in df.columns:
-            df.rename(columns={'Siswa': 'Sumber Data'}, inplace=True)
-        elif 'Sumber Data' not in df.columns:
-            df['Sumber Data'] = sheet
+def recover_missing_values(df_split, raw_path):
+    if not os.path.exists(raw_path):
+        return df_split
+    xl_raw = pd.ExcelFile(raw_path)
+    raw_sheets = {}
+    for sheet in xl_raw.sheet_names:
+        df_raw = pd.read_excel(xl_raw, sheet_name=sheet)
+        df_raw = df_raw.copy()
+        if 'Sumber Data' not in df_raw.columns:
+            df_raw['Sumber Data'] = sheet.replace('Data Mentah ', '')
+        raw_sheets[sheet.replace('Data Mentah ', '')] = df_raw
 
-        if all(col in df.columns for col in required_cols):
-            dfs.append(df[required_cols])
+    df_split = df_split.copy()
+    print("df_split columns:", df_split.columns.tolist())
+    for idx, row in df_split.iterrows():
+        student = row.get('Nama Siswa', '')
+        if not isinstance(student, str) or not student:
+            student = row.get('Sumber Data', '')
+        if student in raw_sheets:
+            raw_df = raw_sheets[student]
+            match_mask = (raw_df['Label'].astype(str).str.strip() == str(row['Label']).strip())
             
-    if not dfs:
-        raise ValueError("No valid data found in the Excel file.")
+            raw_val_str = raw_df['Nilai'].astype(str).str.strip().str.replace('.0', '', regex=False)
+            split_val_str = str(row['Nilai']).strip().replace('.0', '')
+            match_mask = match_mask & (raw_val_str == split_val_str)
+            
+            matches = raw_df[match_mask]
+            if len(matches) == 1:
+                recovered_row = matches.iloc[0]
+                if pd.isnull(row['Aspek / Mapel']) or str(row['Aspek / Mapel']) == 'nan':
+                    df_split.at[idx, 'Aspek / Mapel'] = recovered_row['Aspek / Mapel']
+                if pd.isnull(row['Deskripsi Penilaian']) or str(row['Deskripsi Penilaian']) == 'nan':
+                    df_split.at[idx, 'Deskripsi Penilaian'] = recovered_row['Deskripsi Penilaian']
+            elif len(matches) > 1:
+                if not pd.isnull(row['Deskripsi Penilaian']) and str(row['Deskripsi Penilaian']) != 'nan':
+                    narrowed = matches[matches['Deskripsi Penilaian'].astype(str).str.strip() == str(row['Deskripsi Penilaian']).strip()]
+                    if len(narrowed) == 1:
+                        recovered_row = narrowed.iloc[0]
+                        if pd.isnull(row['Aspek / Mapel']) or str(row['Aspek / Mapel']) == 'nan':
+                            df_split.at[idx, 'Aspek / Mapel'] = recovered_row['Aspek / Mapel']
+                elif not pd.isnull(row['Aspek / Mapel']) and str(row['Aspek / Mapel']) != 'nan':
+                    narrowed = matches[matches['Aspek / Mapel'].astype(str).str.strip() == str(row['Aspek / Mapel']).strip()]
+                    if len(narrowed) == 1:
+                        recovered_row = narrowed.iloc[0]
+                        if pd.isnull(row['Deskripsi Penilaian']) or str(row['Deskripsi Penilaian']) == 'nan':
+                            df_split.at[idx, 'Deskripsi Penilaian'] = recovered_row['Deskripsi Penilaian']
+    return df_split
+
+def load_split_data_with_recovery(split_path, raw_path):
+    print(f"Loading data split from {split_path} with recovery from {raw_path}...")
+    tr = pd.read_excel(split_path, sheet_name='Data Training (80%)')
+    te = pd.read_excel(split_path, sheet_name='Data Testing (20%)')
+    
+    def normalize_cols(df):
+        df = df.copy()
+        if 'Sumber Data' not in df.columns:
+            df['Sumber Data'] = df['Nama Siswa'] if 'Nama Siswa' in df.columns else ''
+        return df
         
-    all_df = pd.concat(dfs, ignore_index=True)
+    tr = normalize_cols(tr)
+    te = normalize_cols(te)
     
-    # Preprocess Nilai: Convert to numeric, handle missing
-    all_df['X1 (Nilai)'] = pd.to_numeric(all_df['X1 (Nilai)'], errors='coerce')
-    # Fill NaN Nilai with mean or 0 (using mean as per PDF pseudocode)
-    all_df['X1 (Nilai)'] = all_df['X1 (Nilai)'].fillna(all_df['X1 (Nilai)'].mean() if not all_df['X1 (Nilai)'].isna().all() else 0)
+    tr = recover_missing_values(tr, raw_path)
+    te = recover_missing_values(te, raw_path)
     
-    all_df.dropna(subset=['X2 (Deskripsi Capaian)', 'Aspek / Mapel', 'Y (Label)'], inplace=True)
-    return all_df
+    tr['Set Data'] = 'Training'
+    te['Set Data'] = 'Testing'
+    
+    df = pd.concat([tr, te], ignore_index=True)
+    
+    df['Nilai'] = pd.to_numeric(df['Nilai'], errors='coerce')
+    df['Nilai'] = df['Nilai'].fillna(df['Nilai'].mean() if not df['Nilai'].isna().all() else 0)
+    
+    df.dropna(subset=['Deskripsi Penilaian', 'Aspek / Mapel', 'Label'], inplace=True)
+    return df
 
 def train_system():
     # 1. Load Data
-    df = load_and_consolidate_data(DATA_PATH)
-    print(f"Total rows after consolidation: {len(df)}")
+    df = load_split_data_with_recovery(SPLIT_PATH, DATA_PATH)
+    print(f"Total rows after consolidation and recovery: {len(df)}")
 
     # 2. Preprocessing
     print("Pre-processing text...")
-    df['clean_X2'] = df['X2 (Deskripsi Capaian)'].apply(clean_text)
+    df['clean_X2'] = df['Deskripsi Penilaian'].apply(clean_text)
     
     # 3. Encoding Targets
     print("Encoding target labels...")
@@ -100,26 +141,31 @@ def train_system():
     
     y = np.vstack([
         le_aspek.fit_transform(df['Aspek / Mapel']),
-        le_label.fit_transform(df['Y (Label)'])
+        le_label.fit_transform(df['Label'])
     ]).T
     
     encoders = {'le_aspek': le_aspek, 'le_label': le_label}
 
+    # 5. Train/Test Split masks (moved up for TF-IDF fitting)
+    train_mask = (df['Set Data'] == 'Training').values
+    test_mask = (df['Set Data'] == 'Testing').values
+
     # 4. Feature Extraction (TF-IDF)
-    print("Extracting TF-IDF features...")
+    print("Extracting TF-IDF features (fit only on training)...")
     tfidf = TfidfVectorizer(max_features=500, ngram_range=(1, 1)) 
-    X_tfidf = tfidf.fit_transform(df['clean_X2']).toarray()
+    tfidf.fit(df.loc[train_mask, 'clean_X2'])
+    X_tfidf = tfidf.transform(df['clean_X2']).toarray()
     
-    # Combine TF-IDF with X1 (Nilai)
-    X_nilai = df[['X1 (Nilai)']].values
+    # Combine TF-IDF with Nilai
+    X_nilai = df[['Nilai']].values
     X = np.hstack([X_nilai, X_tfidf])
     
     # Export Full Transformed Data
-    feature_names = ['X1_Nilai_Feature'] + list(tfidf.get_feature_names_out())
+    feature_names = ['Nilai'] + list(tfidf.get_feature_names_out())
     transformed_df = pd.DataFrame(X, columns=feature_names)
     
     # Add all original columns back for complete transformation data
-    original_cols = ['Sumber Data', 'Aspek / Mapel', 'X1 (Nilai)', 'X2 (Deskripsi Capaian)', 'Y (Label)']
+    original_cols = ['Sumber Data', 'Aspek / Mapel', 'Nilai', 'Deskripsi Penilaian', 'Label', 'Set Data']
     metadata_df = df[original_cols].reset_index(drop=True)
     full_transformed_df = pd.concat([metadata_df, transformed_df], axis=1)
     
@@ -127,25 +173,36 @@ def train_system():
     print("Full transformed data saved to 'TRANSFORMED_DATA.xlsx'.")
 
     # 5. Train/Test Split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test = X[train_mask], X[test_mask]
+    y_train, y_test = y[train_mask], y[test_mask]
 
     # 6. Model Build & Tuning
     print("Initializing Random Forest & MultiOutputClassifier...")
     rf = RandomForestClassifier(random_state=42)
     mo_clf = MultiOutputClassifier(rf)
     
-    param_grid = {
-        'estimator__n_estimators': [50, 100],
-        'estimator__max_depth': [None, 10, 20],
-        'estimator__min_samples_split': [2, 5]
+    param_dist = {
+        'estimator__n_estimators': [100, 200, 300, 400, 500],
+        'estimator__max_depth': [10, 20, 30, None],
+        'estimator__min_samples_split': [2, 5, 10],
+        'estimator__min_samples_leaf': [1, 2, 4],
+        'estimator__max_features': ['sqrt', 'log2']
     }
     
-    print("Starting Hyperparameter Tuning (GridSearch)...")
-    grid_search = GridSearchCV(mo_clf, param_grid, cv=3, n_jobs=-1, verbose=1)
-    grid_search.fit(X_train, y_train)
+    print("Starting Hyperparameter Tuning (RandomizedSearchCV)...")
+    random_search = RandomizedSearchCV(
+        estimator=mo_clf,
+        param_distributions=param_dist,
+        n_iter=20,
+        cv=5,
+        n_jobs=-1,
+        random_state=42,
+        verbose=1
+    )
+    random_search.fit(X_train, y_train)
     
-    best_model = grid_search.best_estimator_
-    print(f"Best Params: {grid_search.best_params_}")
+    best_model = random_search.best_estimator_
+    print(f"Best Params: {random_search.best_params_}")
 
     # 7. Evaluation
     print("\nEvaluation Results:")
@@ -153,7 +210,7 @@ def train_system():
     
     from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-    outputs = [('Aspek / Mapel', le_aspek), ('Y (Label)', le_label)]
+    outputs = [('Aspek / Mapel', le_aspek), ('Label', le_label)]
     
     for i, (name, encoder) in enumerate(outputs):
         print(f"\n--- Output {i+1}: {name} ---")
