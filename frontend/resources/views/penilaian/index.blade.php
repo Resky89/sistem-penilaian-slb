@@ -17,34 +17,143 @@
     </div>
     <x-button type="primary" tag="a" :href="route('penilaian.form')">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-        Tambah
+        Tambah Penilaian
     </x-button>
 </div>
 
 {{-- Tabel Penilaian --}}
-<x-table :headers="['NIS', 'Nama', 'Jenis Kelamin', 'Disabilitas', 'Aksi']">
-    @php
-        $dummyPenilaian = [
-            ['nis' => '1234567890', 'nama' => 'Jhon Doe', 'jk' => 'Laki-laki', 'disabilitas' => 'Tunagrahita'],
-            ['nis' => '1234567891', 'nama' => 'Jane Doe', 'jk' => 'Perempuan', 'disabilitas' => 'Tunagrahita'],
-        ];
-    @endphp
-
-    @foreach($dummyPenilaian as $item)
+<x-table :headers="['NIS', 'Nama Siswa', 'Disabilitas', 'Status Perkembangan', 'Aksi']">
+    <tbody id="penilaian-table-body">
         <tr>
-            <td>{{ $item['nis'] }}</td>
-            <td>{{ $item['nama'] }}</td>
-            <td>{{ $item['jk'] }}</td>
-            <td>{{ $item['disabilitas'] }}</td>
-            <td>
-                <div class="table__actions">
-                    {{-- Lihat Detail --}}
-                    <a href="{{ route('penilaian.hasil') }}" class="btn btn--ghost" title="Lihat Hasil">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
-                    </a>
-                </div>
-            </td>
+            <td colspan="5" class="text-center">Memuat data penilaian...</td>
         </tr>
-    @endforeach
+    </tbody>
 </x-table>
 @endsection
+
+@push('scripts')
+<script>
+    let allStudents = [];
+    let allAssessments = [];
+
+    async function loadPenilaianData() {
+        const token = localStorage.getItem('jwt_token');
+        const tableBody = document.getElementById('penilaian-table-body');
+
+        try {
+            // Fetch students & assessments in parallel
+            const [studentsRes, assessmentsRes] = await Promise.all([
+                fetch(`${API_URL}/students`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_URL}/assessments`, { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+
+            const studentsData = await studentsRes.json();
+            const assessmentsData = await assessmentsRes.json();
+
+            if (studentsData.success && assessmentsData.success) {
+                allStudents = studentsData.data;
+                allAssessments = assessmentsData.data;
+                renderPenilaianTable();
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Gagal memuat data dari server.</td></tr>`;
+            }
+        } catch (err) {
+            console.error(err);
+            tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Gagal menghubungi server API.</td></tr>`;
+        }
+    }
+
+    function renderPenilaianTable() {
+        const tableBody = document.getElementById('penilaian-table-body');
+        if (allStudents.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="text-center">Tidak ada data siswa. Silakan tambahkan siswa terlebih dahulu di menu Data Siswa.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = '';
+        allStudents.forEach(student => {
+            // Find latest assessment for this student
+            const studentAssessments = allAssessments.filter(a => a.student_id === student.id);
+            // Sort by date or id descending
+            studentAssessments.sort((a, b) => b.id - a.id);
+            
+            const latestAssessment = studentAssessments[0];
+            let statusBadge = '<span class="badge badge--gray">Belum Dinilai</span>';
+            let actionButtons = '';
+
+            if (latestAssessment && latestAssessment.prediction) {
+                const status = latestAssessment.prediction.development_status;
+                let badgeClass = 'badge--gray';
+                
+                if (status === 'Baik') {
+                    badgeClass = 'badge--success';
+                } else if (status === 'Cukup') {
+                    badgeClass = 'badge--primary';
+                } else if (status === 'Perlu Bimbingan') {
+                    badgeClass = 'badge--warning';
+                }
+
+                statusBadge = `<span class="badge ${badgeClass}">${escapeHtml(status)}</span>`;
+                
+                // Button to view details
+                actionButtons += `
+                    <a href="${'{{ route("penilaian.hasil") }}'}?student_id=${student.id}" class="btn btn--ghost" title="Lihat Hasil Klasifikasi" style="padding: 0.5rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                    </a>
+                `;
+            }
+
+            // Always add a button to perform a new assessment
+            actionButtons += `
+                <a href="${'{{ route("penilaian.form") }}'}?student_id=${student.id}" class="btn btn--ghost" title="Input Penilaian Baru" style="padding: 0.5rem; color: var(--color-primary);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                </a>
+            `;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(student.student_number)}</td>
+                <td>${escapeHtml(student.full_name)}</td>
+                <td>${escapeHtml(student.disability_category)}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="table__actions">
+                        ${actionButtons}
+                    </div>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    // --- Search Helper ---
+    document.getElementById('search-penilaian').addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        const filtered = allStudents.filter(student => 
+            student.full_name.toLowerCase().includes(query) || 
+            student.student_number.toLowerCase().includes(query) ||
+            student.disability_category.toLowerCase().includes(query)
+        );
+        
+        // Temporarily override allStudents to render filtered list
+        const originalAllStudents = allStudents;
+        allStudents = filtered;
+        renderPenilaianTable();
+        allStudents = originalAllStudents;
+    });
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    document.addEventListener('DOMContentLoaded', loadPenilaianData);
+</script>
+@endpush

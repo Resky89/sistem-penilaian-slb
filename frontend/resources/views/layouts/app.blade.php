@@ -9,14 +9,116 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <script>
+        const API_URL = "http://localhost:8001/api";
+        
+        // Auth Guard
+        if (!localStorage.getItem('jwt_token')) {
+            window.location.href = '{{ route("login") }}';
+        }
+
+        // --- Fetch Interceptor & Silent Refresh ---
+        const originalFetch = window.fetch;
+        let isRefreshing = false;
+        let refreshSubscribers = [];
+
+        function subscribeTokenRefresh(cb) {
+            refreshSubscribers.push(cb);
+        }
+
+        function onRefreshed(token) {
+            refreshSubscribers.forEach(cb => cb(token));
+            refreshSubscribers = [];
+        }
+
+        function handleLogoutRedirect() {
+            localStorage.removeItem('jwt_token');
+            localStorage.removeItem('jwt_refresh_token');
+            localStorage.removeItem('user_name');
+            window.location.href = '{{ route("login") }}';
+        }
+
+        window.fetch = async function (url, options = {}) {
+            let token = localStorage.getItem('jwt_token');
+            if (token && url.toString().startsWith(API_URL)) {
+                options.headers = options.headers || {};
+                if (!options.headers['Authorization']) {
+                    options.headers['Authorization'] = `Bearer ${token}`;
+                }
+            }
+
+            try {
+                let response = await originalFetch(url, options);
+
+                // Jika token expired (401 Unauthorized) dan bukan request login/refresh itu sendiri
+                if (response.status === 401 && 
+                    url.toString().startsWith(API_URL) && 
+                    !url.toString().includes('/auth/refresh') && 
+                    !url.toString().includes('/auth/login')) {
+                    
+                    const refreshToken = localStorage.getItem('jwt_refresh_token');
+                    if (!refreshToken) {
+                        handleLogoutRedirect();
+                        return response;
+                    }
+
+                    if (!isRefreshing) {
+                        isRefreshing = true;
+                        try {
+                            const refreshRes = await originalFetch(`${API_URL}/auth/refresh`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ refresh_token: refreshToken })
+                            });
+                            
+                            const refreshData = await refreshRes.json();
+                            if (refreshData.success && refreshData.data.access_token) {
+                                const newAccessToken = refreshData.data.access_token;
+                                const newRefreshToken = refreshData.data.refresh_token;
+                                
+                                localStorage.setItem('jwt_token', newAccessToken);
+                                if (newRefreshToken) {
+                                    localStorage.setItem('jwt_refresh_token', newRefreshToken);
+                                }
+                                
+                                isRefreshing = false;
+                                onRefreshed(newAccessToken);
+                            } else {
+                                isRefreshing = false;
+                                handleLogoutRedirect();
+                                return response;
+                            }
+                        } catch (refreshErr) {
+                            isRefreshing = false;
+                            handleLogoutRedirect();
+                            return response;
+                        }
+                    }
+
+                    // Menunggu refresh token selesai dan mengulangi request asli
+                    return new Promise((resolve) => {
+                        subscribeTokenRefresh((newToken) => {
+                            options.headers = options.headers || {};
+                            options.headers['Authorization'] = `Bearer ${newToken}`;
+                            resolve(originalFetch(url, options));
+                        });
+                    });
+                }
+
+                return response;
+            } catch (error) {
+                throw error;
+            }
+        };
+    </script>
 </head>
 <body>
     {{-- Top Bar --}}
     <header class="topbar">
         <span class="topbar__brand">SIPACA-SLB</span>
         <div class="topbar__user">
-            <span>Guru SLB</span>
-            <div class="topbar__avatar">G</div>
+            <span id="user-display-name">Guru SLB</span>
+            <div class="topbar__avatar" id="user-display-avatar">G</div>
         </div>
     </header>
 
@@ -46,7 +148,7 @@
             </li>
         </ul>
         <div class="sidebar__footer">
-            <a href="{{ route('login') }}" class="sidebar__logout">
+            <a href="#" class="sidebar__logout" id="btn-sidebar-logout">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
                 Logout
             </a>
@@ -108,6 +210,31 @@
             toast.classList.add('toast--removing');
             toast.addEventListener('animationend', function () { toast.remove(); });
         }
+
+        // Tampilkan info user aktif dan kelola logout
+        document.addEventListener('DOMContentLoaded', function() {
+            const userName = localStorage.getItem('user_name') || 'Guru SLB';
+            const userDisplay = document.getElementById('user-display-name');
+            const avatarDisplay = document.getElementById('user-display-avatar');
+            if (userDisplay) userDisplay.textContent = userName;
+            if (avatarDisplay) avatarDisplay.textContent = userName.charAt(0).toUpperCase();
+
+            document.getElementById('btn-sidebar-logout')?.addEventListener('click', async function(e) {
+                e.preventDefault();
+                const token = localStorage.getItem('jwt_token');
+                try {
+                    await fetch(`${API_URL}/auth/logout`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (err) {
+                    console.error('API logout request failed:', err);
+                }
+                localStorage.removeItem('jwt_token');
+                localStorage.removeItem('user_name');
+                window.location.href = '{{ route("login") }}';
+            });
+        });
     </script>
 </body>
 </html>

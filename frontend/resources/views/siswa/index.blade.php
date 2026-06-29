@@ -17,41 +17,17 @@
     </div>
     <x-button type="primary" onclick="openModal('modal-create')">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-        Tambah
+        Tambah Siswa
     </x-button>
 </div>
 
 {{-- Tabel Data Siswa --}}
-<x-table :headers="['NIS', 'Nama', 'Jenis Kelamin', 'Disabilitas', 'Aksi']">
-    @php
-        $dummySiswa = [
-            ['nis' => '1234567890', 'nama' => 'Jhon Doe', 'jk' => 'Laki-laki', 'disabilitas' => 'Tunagrahita'],
-            ['nis' => '1234567891', 'nama' => 'Jane Doe', 'jk' => 'Perempuan', 'disabilitas' => 'Tunagrahita'],
-            ['nis' => '1234567892', 'nama' => 'Ahmad Fauzi', 'jk' => 'Laki-laki', 'disabilitas' => 'Tunarungu'],
-            ['nis' => '1234567893', 'nama' => 'Siti Aisyah', 'jk' => 'Perempuan', 'disabilitas' => 'Tunanetra'],
-        ];
-    @endphp
-
-    @foreach($dummySiswa as $siswa)
+<x-table :headers="['NIS', 'Nama', 'Kelas', 'Semester', 'Ketunaan', 'Sekolah', 'Tahun Ajaran', 'Aksi']">
+    <tbody id="siswa-table-body">
         <tr>
-            <td>{{ $siswa['nis'] }}</td>
-            <td>{{ $siswa['nama'] }}</td>
-            <td>{{ $siswa['jk'] }}</td>
-            <td>{{ $siswa['disabilitas'] }}</td>
-            <td>
-                <div class="table__actions">
-                    <button class="btn btn--ghost" title="Edit"
-                            onclick="openEditModal('{{ $siswa['nis'] }}', '{{ $siswa['nama'] }}', '{{ $siswa['jk'] }}', '{{ $siswa['disabilitas'] }}')">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352 4.352-1.321a2 2 0 0 0 .83-.497z"/></svg>
-                    </button>
-                    <button class="btn btn--danger" title="Hapus" style="padding: 0.5rem;"
-                            onclick="openDeleteModal('{{ $siswa['nis'] }}', '{{ $siswa['nama'] }}')">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                    </button>
-                </div>
-            </td>
+            <td colspan="8" class="text-center">Memuat data siswa...</td>
         </tr>
-    @endforeach
+    </tbody>
 </x-table>
 
 {{-- Modal Tambah Siswa --}}
@@ -59,18 +35,19 @@
     <form id="form-create-siswa">
         <x-input name="create-nis" label="NIS" placeholder="Masukkan NIS" required />
         <x-input name="create-nama" label="Nama Lengkap" placeholder="Masukkan nama lengkap" required />
+        <x-input name="create-class" label="Tingkat Kelas" placeholder="Masukkan tingkat kelas (contoh: IV-A)" required />
         <div class="form-group">
-            <label for="create-jk" class="form-label">Jenis Kelamin</label>
-            <select id="create-jk" name="create-jk" class="form-select" required>
-                <option value="" disabled selected>Pilih jenis kelamin</option>
-                <option value="Laki-laki">Laki-laki</option>
-                <option value="Perempuan">Perempuan</option>
+            <label for="create-semester" class="form-label">Semester Aktif</label>
+            <select id="create-semester" name="create-semester" class="form-select" required>
+                <option value="" disabled selected>Pilih semester</option>
+                <option value="Odd">Ganjil</option>
+                <option value="Even">Genap</option>
             </select>
         </div>
         <div class="form-group">
-            <label for="create-disabilitas" class="form-label">Jenis Disabilitas</label>
+            <label for="create-disabilitas" class="form-label">Jenis Ketunaan</label>
             <select id="create-disabilitas" name="create-disabilitas" class="form-select" required>
-                <option value="" disabled selected>Pilih jenis disabilitas</option>
+                <option value="" disabled selected>Pilih ketunaan</option>
                 <option value="Tunagrahita">Tunagrahita</option>
                 <option value="Tunarungu">Tunarungu</option>
                 <option value="Tunanetra">Tunanetra</option>
@@ -79,6 +56,8 @@
                 <option value="Autisme">Autisme</option>
             </select>
         </div>
+        <x-input name="create-school" label="Nama Sekolah" placeholder="Masukkan nama sekolah" required />
+        <x-input name="create-academic-year" label="Tahun Ajaran" placeholder="Contoh: 2025/2026" required />
     </form>
 
     <x-slot name="footer">
@@ -92,18 +71,19 @@
     <form id="form-edit-siswa">
         <x-input name="edit-nis" label="NIS" placeholder="Masukkan NIS" required />
         <x-input name="edit-nama" label="Nama Lengkap" placeholder="Masukkan nama lengkap" required />
+        <x-input name="edit-class" label="Tingkat Kelas" placeholder="Masukkan tingkat kelas" required />
         <div class="form-group">
-            <label for="edit-jk" class="form-label">Jenis Kelamin</label>
-            <select id="edit-jk" name="edit-jk" class="form-select" required>
-                <option value="" disabled>Pilih jenis kelamin</option>
-                <option value="Laki-laki">Laki-laki</option>
-                <option value="Perempuan">Perempuan</option>
+            <label for="edit-semester" class="form-label">Semester Aktif</label>
+            <select id="edit-semester" name="edit-semester" class="form-select" required>
+                <option value="" disabled>Pilih semester</option>
+                <option value="Odd">Ganjil</option>
+                <option value="Even">Genap</option>
             </select>
         </div>
         <div class="form-group">
-            <label for="edit-disabilitas" class="form-label">Jenis Disabilitas</label>
+            <label for="edit-disabilitas" class="form-label">Jenis Ketunaan</label>
             <select id="edit-disabilitas" name="edit-disabilitas" class="form-select" required>
-                <option value="" disabled>Pilih jenis disabilitas</option>
+                <option value="" disabled>Pilih ketunaan</option>
                 <option value="Tunagrahita">Tunagrahita</option>
                 <option value="Tunarungu">Tunarungu</option>
                 <option value="Tunanetra">Tunanetra</option>
@@ -112,6 +92,8 @@
                 <option value="Autisme">Autisme</option>
             </select>
         </div>
+        <x-input name="edit-school" label="Nama Sekolah" placeholder="Masukkan nama sekolah" required />
+        <x-input name="edit-academic-year" label="Tahun Ajaran" placeholder="Contoh: 2025/2026" required />
     </form>
 
     <x-slot name="footer">
@@ -129,7 +111,7 @@
         <p class="confirm-text">
             Apakah Anda yakin ingin menghapus data siswa
             <strong id="delete-nama-siswa"></strong>?
-            Tindakan ini tidak dapat dibatalkan.
+            Semua riwayat transaksi penilaian terkait siswa ini akan ikut terhapus secara permanen.
         </p>
     </div>
 
@@ -142,6 +124,10 @@
 
 @push('scripts')
 <script>
+    let allStudents = [];
+    let currentEditStudentId = null;
+    let currentDeleteStudentId = null;
+
     // --- Modal Helpers ---
     function openModal(id) {
         document.getElementById(id).classList.add('modal-overlay--active');
@@ -171,49 +157,227 @@
         }
     });
 
-    // --- Edit Modal ---
-    function openEditModal(nis, nama, jk, disabilitas) {
-        document.getElementById('edit-nis').value = nis;
-        document.getElementById('edit-nama').value = nama;
-        document.getElementById('edit-jk').value = jk;
-        document.getElementById('edit-disabilitas').value = disabilitas;
+    // --- Load Students from API ---
+    async function loadStudents() {
+        const token = localStorage.getItem('jwt_token');
+        const tableBody = document.getElementById('siswa-table-body');
+        
+        try {
+            const res = await fetch(`${API_URL}/students`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                allStudents = data.data;
+                renderStudents(allStudents);
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">${data.message || 'Gagal memuat data'}</td></tr>`;
+            }
+        } catch (err) {
+            console.error(err);
+            tableBody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Gagal menghubungi server API.</td></tr>`;
+        }
+    }
+
+    // --- Render Students to Table ---
+    function renderStudents(students) {
+        const tableBody = document.getElementById('siswa-table-body');
+        if (students.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="8" class="text-center">Tidak ada data siswa ditemukan.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = '';
+        students.forEach(student => {
+            const semLabel = student.semester === 'Odd' ? 'Ganjil' : 'Genap';
+            const tr = document.createElement('tr');
+            
+            tr.innerHTML = `
+                <td>${escapeHtml(student.student_number)}</td>
+                <td><strong>${escapeHtml(student.full_name)}</strong></td>
+                <td>${escapeHtml(student.class_level)}</td>
+                <td>${semLabel}</td>
+                <td>${escapeHtml(student.disability_category)}</td>
+                <td>${escapeHtml(student.school_name)}</td>
+                <td>${escapeHtml(student.academic_year)}</td>
+                <td>
+                    <div class="table__actions">
+                        <button class="btn btn--ghost" title="Edit"
+                                onclick="openEditModal(${student.id})">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352 4.352-1.321a2 2 0 0 0 .83-.497z"/></svg>
+                        </button>
+                        <button class="btn btn--danger" title="Hapus" style="padding: 0.5rem;"
+                                onclick="openDeleteModal(${student.id})">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    // --- Search Helper ---
+    document.getElementById('search-siswa').addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        const filtered = allStudents.filter(student => 
+            student.full_name.toLowerCase().includes(query) || 
+            student.student_number.toLowerCase().includes(query) ||
+            student.disability_category.toLowerCase().includes(query) ||
+            student.school_name.toLowerCase().includes(query)
+        );
+        renderStudents(filtered);
+    });
+
+    // --- Form Submissions ---
+    async function submitCreate() {
+        const form = document.getElementById('form-create-siswa');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        const token = localStorage.getItem('jwt_token');
+        const payload = {
+            student_number: document.getElementById('create-nis').value,
+            full_name: document.getElementById('create-nama').value,
+            class_level: document.getElementById('create-class').value,
+            semester: document.getElementById('create-semester').value,
+            disability_category: document.getElementById('create-disabilitas').value,
+            school_name: document.getElementById('create-school').value,
+            academic_year: document.getElementById('create-academic-year').value
+        };
+
+        try {
+            const res = await fetch(`${API_URL}/students`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('success', 'Data siswa berhasil ditambahkan.');
+                form.reset();
+                closeModal('modal-create');
+                loadStudents();
+            } else {
+                showToast('error', data.message || 'Gagal menambahkan siswa.');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('error', 'Terjadi kesalahan jaringan.');
+        }
+    }
+
+    // --- Open Edit Modal ---
+    function openEditModal(id) {
+        const student = allStudents.find(s => s.id === id);
+        if (!student) return;
+
+        currentEditStudentId = id;
+        document.getElementById('edit-nis').value = student.student_number;
+        document.getElementById('edit-nama').value = student.full_name;
+        document.getElementById('edit-class').value = student.class_level;
+        document.getElementById('edit-semester').value = student.semester;
+        document.getElementById('edit-disabilitas').value = student.disability_category;
+        document.getElementById('edit-school').value = student.school_name;
+        document.getElementById('edit-academic-year').value = student.academic_year;
+        
         openModal('modal-edit');
     }
 
-    // --- Delete Modal ---
-    let deleteTargetNis = '';
+    // --- Submit Edit ---
+    async function submitEdit() {
+        const form = document.getElementById('form-edit-siswa');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
 
-    function openDeleteModal(nis, nama) {
-        deleteTargetNis = nis;
-        document.getElementById('delete-nama-siswa').textContent = nama;
+        const token = localStorage.getItem('jwt_token');
+        const payload = {
+            student_number: document.getElementById('edit-nis').value,
+            full_name: document.getElementById('edit-nama').value,
+            class_level: document.getElementById('edit-class').value,
+            semester: document.getElementById('edit-semester').value,
+            disability_category: document.getElementById('edit-disabilitas').value,
+            school_name: document.getElementById('edit-school').value,
+            academic_year: document.getElementById('edit-academic-year').value
+        };
+
+        try {
+            const res = await fetch(`${API_URL}/students/${currentEditStudentId}`, {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('success', 'Data siswa berhasil diperbarui.');
+                closeModal('modal-edit');
+                loadStudents();
+            } else {
+                showToast('error', data.message || 'Gagal memperbarui data.');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('error', 'Terjadi kesalahan jaringan.');
+        }
+    }
+
+    // --- Open Delete Modal ---
+    function openDeleteModal(id) {
+        const student = allStudents.find(s => s.id === id);
+        if (!student) return;
+
+        currentDeleteStudentId = id;
+        document.getElementById('delete-nama-siswa').textContent = student.full_name;
         openModal('modal-delete');
     }
 
-    // --- Form Submissions (UI-only demo) ---
-    function submitCreate() {
-        var form = document.getElementById('form-create-siswa');
-        if (!form.checkValidity()) {
-            form.reportValidity();
-            return;
+    // --- Submit Delete ---
+    async function submitDelete() {
+        const token = localStorage.getItem('jwt_token');
+        try {
+            const res = await fetch(`${API_URL}/students/${currentDeleteStudentId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('success', 'Data siswa berhasil dihapus.');
+                closeModal('modal-delete');
+                loadStudents();
+            } else {
+                showToast('error', data.message || 'Gagal menghapus data.');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('error', 'Terjadi kesalahan jaringan.');
         }
-        showToast('success', 'Data siswa berhasil ditambahkan.');
-        form.reset();
-        closeModal('modal-create');
     }
 
-    function submitEdit() {
-        var form = document.getElementById('form-edit-siswa');
-        if (!form.checkValidity()) {
-            form.reportValidity();
-            return;
-        }
-        showToast('success', 'Data siswa berhasil diperbarui.');
-        closeModal('modal-edit');
+    // --- Helpers ---
+    function escapeHtml(text) {
+        if (!text) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
     }
 
-    function submitDelete() {
-        showToast('success', 'Data siswa NIS ' + deleteTargetNis + ' berhasil dihapus.');
-        closeModal('modal-delete');
-    }
+    // Inisialisasi
+    document.addEventListener('DOMContentLoaded', loadStudents);
 </script>
 @endpush

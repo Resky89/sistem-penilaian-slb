@@ -1,17 +1,18 @@
 from pydantic import BaseModel, Field
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Optional
+
 
 # --- STUDENT SCHEMAS ---
 class StudentCreate(BaseModel):
     student_number: str = Field(..., description="Nomor Induk Siswa (NIS)")
     full_name: str
-    gender: str = Field(..., pattern="^(M|F)$", description="M (Male) atau F (Female)")
-    birth_date: date
-    disability_category: str = Field(..., description="Kategori Disabilitas, e.g. Tunagrahita Ringan C")
-    guardian_name: str
     class_level: str
     semester: str = Field(..., pattern="^(Odd|Even)$")
+    disability_category: str = Field(..., description="Kategori Disabilitas, e.g. Tunagrahita Ringan C")
+    school_name: str = Field(..., description="Nama Sekolah")
+    academic_year: str = Field(..., description="Tahun Ajaran, contoh 2025/2026")
+
 
 class StudentResponse(StudentCreate):
     id: int
@@ -19,41 +20,15 @@ class StudentResponse(StudentCreate):
     class Config:
         from_attributes = True
 
+
 class StudentUpdate(BaseModel):
     student_number: Optional[str] = Field(None, description="Nomor Induk Siswa (NIS)")
     full_name: Optional[str] = None
-    gender: Optional[str] = Field(None, pattern="^(M|F)$", description="M (Male) atau F (Female)")
-    birth_date: Optional[date] = None
-    disability_category: Optional[str] = Field(None, description="Kategori Disabilitas")
-    guardian_name: Optional[str] = None
     class_level: Optional[str] = None
     semester: Optional[str] = Field(None, pattern="^(Odd|Even)$")
-
-
-# --- ASSESSMENT ASPECT SCHEMAS ---
-class AssessmentAspectCreate(BaseModel):
-    aspect_name: str
-    aspect_type: str = Field(..., pattern="^(quantitative|qualitative)$")
-
-class AssessmentAspectResponse(AssessmentAspectCreate):
-    id: int
-
-    class Config:
-        from_attributes = True
-
-class AssessmentAspectUpdate(BaseModel):
-    aspect_name: Optional[str] = None
-    aspect_type: Optional[str] = Field(None, pattern="^(quantitative|qualitative)$")
-
-
-# --- SCORE INPUT SCHEMAS ---
-class ReportScoreInput(BaseModel):
-    aspect_id: int
-    numeric_score: float
-
-class PortfolioScoreInput(BaseModel):
-    aspect_id: int
-    narrative_description: str
+    disability_category: Optional[str] = Field(None, description="Kategori Disabilitas")
+    school_name: Optional[str] = None
+    academic_year: Optional[str] = None
 
 
 # --- TRANSACTION ASSESSMENT SCHEMAS ---
@@ -62,8 +37,48 @@ class AssessmentCreate(BaseModel):
     academic_year: str
     semester: str = Field(..., pattern="^(Odd|Even)$")
     assessment_date: date
-    report_scores: List[ReportScoreInput]
-    portfolio_scores: List[PortfolioScoreInput]
+
+    # Mata Pelajaran (Nilai + Deskripsi)
+    pai_score: Optional[float] = Field(None, ge=0, le=100)
+    pai_desc: Optional[str] = None
+
+    pkn_score: Optional[float] = Field(None, ge=0, le=100)
+    pkn_desc: Optional[str] = None
+
+    ind_score: Optional[float] = Field(None, ge=0, le=100)
+    ind_desc: Optional[str] = None
+
+    mat_score: Optional[float] = Field(None, ge=0, le=100)
+    mat_desc: Optional[str] = None
+
+    ipas_score: Optional[float] = Field(None, ge=0, le=100)
+    ipas_desc: Optional[str] = None
+
+    ing_score: Optional[float] = Field(None, ge=0, le=100)
+    ing_desc: Optional[str] = None
+
+    art_score: Optional[float] = Field(None, ge=0, le=100)
+    art_desc: Optional[str] = None
+
+    pjok_score: Optional[float] = Field(None, ge=0, le=100)
+    pjok_desc: Optional[str] = None
+
+    sun_score: Optional[float] = Field(None, ge=0, le=100)
+    sun_desc: Optional[str] = None
+
+    pro_score: Optional[float] = Field(None, ge=0, le=100)
+    pro_desc: Optional[str] = None
+
+    # Aspek Portofolio (Deskripsi saja)
+    pramuka_desc: Optional[str] = None
+    konsentrasi_desc: Optional[str] = None
+    motorik_desc: Optional[str] = None
+    interaksi_desc: Optional[str] = None
+    emosi_desc: Optional[str] = None
+    bina_diri_desc: Optional[str] = None
+    membaca_desc: Optional[str] = None
+    menulis_desc: Optional[str] = None
+    berhitung_desc: Optional[str] = None
 
 
 # --- PREDICTION / ML SCHEMAS ---
@@ -77,21 +92,16 @@ class PredictionResponse(BaseModel):
         from_attributes = True
 
 
-# --- SCORE DETAILED RESPONSES ---
-class ReportScoreResponse(BaseModel):
+# --- STUDENT EMBEDDED IN ASSESSMENT RESPONSE ---
+class StudentEmbedded(BaseModel):
     id: int
-    aspect_id: int
-    aspect_name: str
-    numeric_score: float
-
-    class Config:
-        from_attributes = True
-
-class PortfolioScoreResponse(BaseModel):
-    id: int
-    aspect_id: int
-    aspect_name: str
-    narrative_description: str
+    student_number: str
+    full_name: str
+    class_level: str
+    semester: str
+    disability_category: str
+    school_name: str
+    academic_year: str
 
     class Config:
         from_attributes = True
@@ -106,8 +116,41 @@ class AssessmentResponse(BaseModel):
     semester: str
     assessment_date: date
     created_at: datetime
-    report_scores: List[ReportScoreResponse]
-    portfolio_scores: List[PortfolioScoreResponse]
+
+    # Mata Pelajaran
+    pai_score: Optional[float] = None
+    pai_desc: Optional[str] = None
+    pkn_score: Optional[float] = None
+    pkn_desc: Optional[str] = None
+    ind_score: Optional[float] = None
+    ind_desc: Optional[str] = None
+    mat_score: Optional[float] = None
+    mat_desc: Optional[str] = None
+    ipas_score: Optional[float] = None
+    ipas_desc: Optional[str] = None
+    ing_score: Optional[float] = None
+    ing_desc: Optional[str] = None
+    art_score: Optional[float] = None
+    art_desc: Optional[str] = None
+    pjok_score: Optional[float] = None
+    pjok_desc: Optional[str] = None
+    sun_score: Optional[float] = None
+    sun_desc: Optional[str] = None
+    pro_score: Optional[float] = None
+    pro_desc: Optional[str] = None
+
+    # Portofolio
+    pramuka_desc: Optional[str] = None
+    konsentrasi_desc: Optional[str] = None
+    motorik_desc: Optional[str] = None
+    interaksi_desc: Optional[str] = None
+    emosi_desc: Optional[str] = None
+    bina_diri_desc: Optional[str] = None
+    membaca_desc: Optional[str] = None
+    menulis_desc: Optional[str] = None
+    berhitung_desc: Optional[str] = None
+
+    student: Optional[StudentEmbedded] = None
     prediction: Optional[PredictionResponse] = None
 
     class Config:

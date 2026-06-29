@@ -9,10 +9,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <script>
+        const API_URL = "http://localhost:8001/api";
+    </script>
 </head>
 <body>
     <div class="auth-wrapper">
         @yield('content')
     </div>
+    @stack('scripts')
 </body>
 </html>

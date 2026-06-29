@@ -1,7 +1,31 @@
 from sqlalchemy.orm import Session
-from app.models.db_models import Assessment, ReportScore, PortfolioScore, Prediction
+from app.models.db_models import Assessment, Prediction
 from app.schemas.assessment import AssessmentCreate
 from typing import List, Dict, Any
+
+# Daftar semua field penilaian yang akan disimpan langsung ke tabel assessments
+ASSESSMENT_FIELDS = [
+    "pai_score", "pai_desc",
+    "pkn_score", "pkn_desc",
+    "ind_score", "ind_desc",
+    "mat_score", "mat_desc",
+    "ipas_score", "ipas_desc",
+    "ing_score", "ing_desc",
+    "art_score", "art_desc",
+    "pjok_score", "pjok_desc",
+    "sun_score", "sun_desc",
+    "pro_score", "pro_desc",
+    "pramuka_desc",
+    "konsentrasi_desc",
+    "motorik_desc",
+    "interaksi_desc",
+    "emosi_desc",
+    "bina_diri_desc",
+    "membaca_desc",
+    "menulis_desc",
+    "berhitung_desc",
+]
+
 
 class AssessmentRepository:
     @staticmethod
@@ -24,43 +48,29 @@ class AssessmentRepository:
         prediction_result: Dict[str, Any]
     ) -> Assessment:
         """
-        Menyimpan data penilaian secara transaksional (ACID):
-        1. Menyimpan data header di tabel 'assessments'
-        2. Menyimpan detail nilai angka di tabel 'report_scores'
-        3. Menyimpan detail deskripsi naratif di tabel 'portfolio_scores'
-        4. Menyimpan hasil prediksi Machine Learning di tabel 'prediction'
+        Menyimpan data penilaian secara transaksional (ACID).
+        Seluruh nilai mata pelajaran dan deskripsi aspek disimpan langsung
+        sebagai kolom di tabel 'assessments'.
         """
         try:
-            # 1. Buat Header Assessment
+            # Bangun kwargs dari field penilaian yang ada di request
+            assessment_kwargs = {
+                field: getattr(assessment_in, field, None)
+                for field in ASSESSMENT_FIELDS
+            }
+
             db_assessment = Assessment(
                 student_id=assessment_in.student_id,
                 user_id=user_id,
                 academic_year=assessment_in.academic_year,
                 semester=assessment_in.semester,
-                assessment_date=assessment_in.assessment_date
+                assessment_date=assessment_in.assessment_date,
+                **assessment_kwargs
             )
             db.add(db_assessment)
-            db.flush() # Mendapatkan ID assessment untuk dihubungkan ke child record
+            db.flush()  # Dapatkan ID assessment untuk relasi Prediction
 
-            # 2. Simpan Report Scores (Kuantitatif)
-            for r_score in assessment_in.report_scores:
-                db_report = ReportScore(
-                    assessment_id=db_assessment.id,
-                    aspect_id=r_score.aspect_id,
-                    numeric_score=r_score.numeric_score
-                )
-                db.add(db_report)
-
-            # 3. Simpan Portfolio Scores (Kualitatif)
-            for p_score in assessment_in.portfolio_scores:
-                db_portfolio = PortfolioScore(
-                    assessment_id=db_assessment.id,
-                    aspect_id=p_score.aspect_id,
-                    narrative_description=p_score.narrative_description
-                )
-                db.add(db_portfolio)
-
-            # 4. Simpan Hasil Prediksi ML
+            # Simpan Hasil Prediksi ML
             db_prediction = Prediction(
                 assessment_id=db_assessment.id,
                 development_status=prediction_result["development_status"],
@@ -70,10 +80,9 @@ class AssessmentRepository:
             )
             db.add(db_prediction)
 
-            # Commit seluruh transaksi
             db.commit()
             db.refresh(db_assessment)
             return db_assessment
         except Exception as e:
-            db.rollback() # Rollback jika terjadi kesalahan agar database tetap konsisten
+            db.rollback()
             raise e

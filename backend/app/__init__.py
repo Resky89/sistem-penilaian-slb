@@ -37,6 +37,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- RATE LIMITER MIDDLEWARE ---
+import time
+from collections import defaultdict
+from fastapi import Request
+
+RATE_LIMIT_REQUESTS = 60  # max requests per minute
+RATE_LIMIT_WINDOW = 60    # window size in seconds
+ip_request_history = defaultdict(list)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    # Bypass docs, swagger, and OPTIONS preflights
+    if request.url.path in ["/", "/docs", "/redoc", "/openapi.json"] or request.method == "OPTIONS":
+        return await call_next(request)
+        
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    
+    # Clean up history older than window
+    ip_request_history[client_ip] = [
+        t for t in ip_request_history[client_ip]
+        if now - t < RATE_LIMIT_WINDOW
+    ]
+    
+    if len(ip_request_history[client_ip]) >= RATE_LIMIT_REQUESTS:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "success": False,
+                "message": "Terlalu banyak permintaan. Silakan coba beberapa saat lagi.",
+                "error_code": "RATE_LIMIT_EXCEEDED",
+                "details": None
+            }
+        )
+        
+    ip_request_history[client_ip].append(now)
+    return await call_next(request)
+
 # --- GLOBAL CUSTOM EXCEPTION HANDLERS ---
 
 @app.exception_handler(StarletteHTTPException)

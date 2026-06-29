@@ -44,7 +44,29 @@ class AuthController:
         
         # Buat token JWT
         access_token = AuthService.create_access_token(data={"sub": db_user.username})
-        return Token(access_token=access_token, token_type="bearer")
+        refresh_token = AuthService.create_refresh_token(data={"sub": db_user.username})
+        return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
+
+    @staticmethod
+    def refresh(db: Session, refresh_token: str) -> Token:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token tidak valid atau kadaluarsa",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+        username = AuthService.verify_token(refresh_token, expected_type="refresh")
+        if username is None:
+            raise credentials_exception
+            
+        user = UserRepository.get_by_username(db, username=username)
+        if user is None:
+            raise credentials_exception
+            
+        # Buat token baru
+        new_access_token = AuthService.create_access_token(data={"sub": user.username})
+        new_refresh_token = AuthService.create_refresh_token(data={"sub": user.username})
+        return Token(access_token=new_access_token, token_type="bearer", refresh_token=new_refresh_token)
 
     @staticmethod
     def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:

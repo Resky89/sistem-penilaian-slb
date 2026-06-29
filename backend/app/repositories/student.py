@@ -21,12 +21,11 @@ class StudentRepository:
         db_student = Student(
             student_number=student.student_number,
             full_name=student.full_name,
-            gender=student.gender,
-            birth_date=student.birth_date,
-            disability_category=student.disability_category,
-            guardian_name=student.guardian_name,
             class_level=student.class_level,
-            semester=student.semester
+            semester=student.semester,
+            disability_category=student.disability_category,
+            school_name=student.school_name,
+            academic_year=student.academic_year
         )
         db.add(db_student)
         db.commit()

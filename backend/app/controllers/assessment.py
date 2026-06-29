@@ -1,22 +1,46 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from app.models.db_models import Student, AssessmentAspect, Assessment, User
+from app.models.db_models import Student, Assessment, User
 from app.schemas.assessment import (
     StudentCreate, StudentResponse, StudentUpdate,
-    AssessmentAspectCreate, AssessmentAspectResponse, AssessmentAspectUpdate,
     AssessmentCreate, AssessmentResponse
 )
 from app.repositories.student import StudentRepository
-from app.repositories.aspect import AspectRepository
 from app.repositories.assessment import AssessmentRepository
 from app.services.ml_service import MLService
 from typing import List
+
+# Label nama untuk setiap field skor mapel — digunakan untuk menyusun narasi
+SUBJECT_SCORE_FIELDS = [
+    ("pai_score", "pai_desc", "PAI & Budi Pekerti"),
+    ("pkn_score", "pkn_desc", "PKn"),
+    ("ind_score", "ind_desc", "Bahasa Indonesia"),
+    ("mat_score", "mat_desc", "Matematika"),
+    ("ipas_score", "ipas_desc", "IPAS"),
+    ("ing_score", "ing_desc", "Bahasa Inggris"),
+    ("art_score", "art_desc", "Seni Budaya"),
+    ("pjok_score", "pjok_desc", "PJOK"),
+    ("sun_score", "sun_desc", "B. Sunda"),
+    ("pro_score", "pro_desc", "Program Khusus"),
+]
+
+PORTFOLIO_DESC_FIELDS = [
+    ("pramuka_desc", "Ekskul Pramuka"),
+    ("konsentrasi_desc", "Konsentrasi"),
+    ("motorik_desc", "Motorik"),
+    ("interaksi_desc", "Interaksi dan Komunikasi"),
+    ("emosi_desc", "Emosi"),
+    ("bina_diri_desc", "Bina Diri"),
+    ("membaca_desc", "Membaca"),
+    ("menulis_desc", "Menulis"),
+    ("berhitung_desc", "Berhitung"),
+]
+
 
 class AssessmentController:
     # --- STUDENT OPERATIONS ---
     @staticmethod
     def create_student(db: Session, student: StudentCreate) -> StudentResponse:
-        # Cek duplikasi NIS
         db_student = StudentRepository.get_by_student_number(db, student.student_number)
         if db_student:
             raise HTTPException(
@@ -29,14 +53,32 @@ class AssessmentController:
     def get_all_students(db: Session) -> List[StudentResponse]:
         return StudentRepository.get_all(db)
 
-    # --- ASPECT OPERATIONS ---
     @staticmethod
-    def create_aspect(db: Session, aspect: AssessmentAspectCreate) -> AssessmentAspectResponse:
-        return AspectRepository.create(db, aspect)
+    def update_student(db: Session, student_id: int, student: StudentUpdate) -> StudentResponse:
+        db_student = StudentRepository.get_by_id(db, student_id)
+        if not db_student:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Siswa dengan ID {student_id} tidak ditemukan"
+            )
+        if student.student_number and student.student_number != db_student.student_number:
+            conflict_student = StudentRepository.get_by_student_number(db, student.student_number)
+            if conflict_student:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Siswa dengan NIS {student.student_number} sudah terdaftar"
+                )
+        return StudentRepository.update(db, student_id, student.dict(exclude_unset=True))
 
     @staticmethod
-    def get_all_aspects(db: Session) -> List[AssessmentAspectResponse]:
-        return AspectRepository.get_all(db)
+    def delete_student(db: Session, student_id: int) -> bool:
+        db_student = StudentRepository.get_by_id(db, student_id)
+        if not db_student:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Siswa dengan ID {student_id} tidak ditemukan"
+            )
+        return StudentRepository.delete(db, student_id)
 
     # --- TRANSACTION ASSESSMENT & PREDICTION ---
     @staticmethod
@@ -49,56 +91,42 @@ class AssessmentController:
                 detail=f"Siswa dengan ID {assessment_in.student_id} tidak ditemukan"
             )
 
-        # 2. Validasi & Ambil data Aspek untuk Report Scores (Kuantitatif)
+        # 2. Kumpulkan nilai-nilai kuantitatif mapel dan gabungkan deskripsi untuk input ML
         numeric_scores = []
-        aspect_names = []
-        for r_score in assessment_in.report_scores:
-            aspect = AspectRepository.get_by_id(db, r_score.aspect_id)
-            if not aspect or aspect.aspect_type != "quantitative":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Aspek ID {r_score.aspect_id} tidak valid untuk penilaian kuantitatif"
-                )
-            numeric_scores.append(r_score.numeric_score)
-            aspect_names.append(aspect.aspect_name)
+        all_desc_texts = []
+        subject_names_used = []
 
-        # 3. Validasi & Ambil data Aspek untuk Portfolio Scores (Kualitatif)
-        narrative_texts = []
-        for p_score in assessment_in.portfolio_scores:
-            aspect = AspectRepository.get_by_id(db, p_score.aspect_id)
-            if not aspect or aspect.aspect_type != "qualitative":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Aspek ID {p_score.aspect_id} tidak valid untuk penilaian kualitatif"
-                )
-            narrative_texts.append(p_score.narrative_description)
-            aspect_names.append(aspect.aspect_name)
+        for score_field, desc_field, label in SUBJECT_SCORE_FIELDS:
+            score_val = getattr(assessment_in, score_field, None)
+            desc_val = getattr(assessment_in, desc_field, None)
+            if score_val is not None:
+                numeric_scores.append(score_val)
+                subject_names_used.append(label)
+            if desc_val:
+                all_desc_texts.append(desc_val)
 
-        if not numeric_scores and not narrative_texts:
+        for desc_field, label in PORTFOLIO_DESC_FIELDS:
+            desc_val = getattr(assessment_in, desc_field, None)
+            if desc_val:
+                all_desc_texts.append(desc_val)
+                subject_names_used.append(label)
+
+        if not numeric_scores and not all_desc_texts:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Penilaian harus berisi minimal satu skor kuantitatif atau deskripsi kualitatif"
+                detail="Penilaian harus berisi minimal satu nilai atau deskripsi aspek"
             )
 
-        # 4. Agregasi data untuk input ke model Machine Learning (Random Forest)
-        avg_nilai = sum(numeric_scores) / len(numeric_scores) if numeric_scores else 0.0
-        combined_text = " ".join(narrative_texts) if narrative_texts else ""
-        combined_aspect_name = ", ".join(list(set(aspect_names))) if aspect_names else "Capaian Belajar"
-
-        # 5. Jalankan Prediksi ML & SHAP
+        # 3. Jalankan Prediksi ML & SHAP per Mapel/Aspek
         try:
-            prediction_res = MLService.predict(
-                numeric_score=avg_nilai,
-                narrative_text=combined_text,
-                aspect_name=combined_aspect_name
-            )
+            prediction_res = MLService.predict(assessment_in.dict())
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Gagal memproses prediksi Machine Learning: {str(e)}"
             )
 
-        # 6. Jalankan Transaksi Simpan Database
+        # 5. Simpan ke Database
         try:
             created_assessment = AssessmentRepository.create_transaction(
                 db=db,
@@ -126,57 +154,3 @@ class AssessmentController:
                 detail=f"Siswa dengan ID {student_id} tidak ditemukan"
             )
         return AssessmentRepository.get_by_student_id(db, student_id)
-
-    # --- CRUD SISWA (UPDATE & DELETE) ---
-    @staticmethod
-    def update_student(db: Session, student_id: int, student: StudentUpdate) -> StudentResponse:
-        db_student = StudentRepository.get_by_id(db, student_id)
-        if not db_student:
-            raise HTTPException(
-                status_code=status.HTTP_444_RESOURCE_NOT_FOUND if False else status.HTTP_404_NOT_FOUND,
-                detail=f"Siswa dengan ID {student_id} tidak ditemukan"
-            )
-        
-        # Jika NIS (student_number) diubah, validasi duplikasi NIS
-        if student.student_number and student.student_number != db_student.student_number:
-            conflict_student = StudentRepository.get_by_student_number(db, student.student_number)
-            if conflict_student:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Siswa dengan NIS {student.student_number} sudah terdaftar"
-                )
-        
-        updated_student = StudentRepository.update(db, student_id, student.dict(exclude_unset=True))
-        return updated_student
-
-    @staticmethod
-    def delete_student(db: Session, student_id: int) -> bool:
-        db_student = StudentRepository.get_by_id(db, student_id)
-        if not db_student:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Siswa dengan ID {student_id} tidak ditemukan"
-            )
-        return StudentRepository.delete(db, student_id)
-
-    # --- CRUD ASPEK (UPDATE & DELETE) ---
-    @staticmethod
-    def update_aspect(db: Session, aspect_id: int, aspect: AssessmentAspectUpdate) -> AssessmentAspectResponse:
-        db_aspect = AspectRepository.get_by_id(db, aspect_id)
-        if not db_aspect:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Aspek penilaian dengan ID {aspect_id} tidak ditemukan"
-            )
-        updated_aspect = AspectRepository.update(db, aspect_id, aspect.dict(exclude_unset=True))
-        return updated_aspect
-
-    @staticmethod
-    def delete_aspect(db: Session, aspect_id: int) -> bool:
-        db_aspect = AspectRepository.get_by_id(db, aspect_id)
-        if not db_aspect:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Aspek penilaian dengan ID {aspect_id} tidak ditemukan"
-            )
-        return AspectRepository.delete(db, aspect_id)

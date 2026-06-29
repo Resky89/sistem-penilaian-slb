@@ -31,14 +31,28 @@ class AuthService:
         else:
             expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         
-        to_encode.update({"exp": expire})
+        to_encode.update({"exp": expire, "type": "access"})
         encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm="HS256")
         return encoded_jwt
 
     @staticmethod
-    def verify_token(token: str) -> Optional[str]:
+    def create_refresh_token(data: dict) -> str:
+        to_encode = data.copy()
+        # Refresh token berlaku selama 7 hari
+        expire = datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        to_encode.update({"exp": expire, "type": "refresh"})
+        encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm="HS256")
+        return encoded_jwt
+
+    @staticmethod
+    def verify_token(token: str, expected_type: str = "access") -> Optional[str]:
         try:
             payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
+            # Verifikasi type token (access/refresh)
+            token_type = payload.get("type")
+            if token_type != expected_type:
+                return None
+                
             username: str = payload.get("sub")
             if username is None:
                 return None

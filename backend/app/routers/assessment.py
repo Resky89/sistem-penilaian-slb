@@ -5,7 +5,6 @@ from app.models.db_models import User
 from app.schemas.base_response import ApiResponse
 from app.schemas.assessment import (
     StudentCreate, StudentResponse, StudentUpdate,
-    AssessmentAspectCreate, AssessmentAspectResponse, AssessmentAspectUpdate,
     AssessmentCreate, AssessmentResponse
 )
 from app.controllers.assessment import AssessmentController
@@ -73,65 +72,6 @@ def delete_student(
     )
 
 
-# --- ENDPOINTS REFERENSI ASPEK (ASPECTS) ---
-
-@router.post("/aspects", response_model=ApiResponse[AssessmentAspectResponse], status_code=status.HTTP_201_CREATED)
-def create_aspect(
-    aspect: AssessmentAspectCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
-    """Menambahkan kategori aspek/mata pelajaran baru."""
-    new_aspect = AssessmentController.create_aspect(db, aspect)
-    return ApiResponse(
-        success=True,
-        message="Aspek penilaian baru berhasil ditambahkan",
-        data=new_aspect
-    )
-
-@router.get("/aspects", response_model=ApiResponse[List[AssessmentAspectResponse]])
-def get_aspects(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
-    """Mengambil semua daftar aspek penilaian."""
-    aspects = AssessmentController.get_all_aspects(db)
-    return ApiResponse(
-        success=True,
-        message="Daftar seluruh aspek penilaian berhasil diambil",
-        data=aspects
-    )
-
-@router.put("/aspects/{aspect_id}", response_model=ApiResponse[AssessmentAspectResponse])
-def update_aspect(
-    aspect_id: int,
-    aspect: AssessmentAspectUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
-    """Mengubah kategori aspek penilaian berdasarkan ID."""
-    updated = AssessmentController.update_aspect(db, aspect_id, aspect)
-    return ApiResponse(
-        success=True,
-        message=f"Kategori aspek dengan ID {aspect_id} berhasil diperbarui",
-        data=updated
-    )
-
-@router.delete("/aspects/{aspect_id}", response_model=ApiResponse[None])
-def delete_aspect(
-    aspect_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
-    """Menghapus kategori aspek penilaian dan seluruh skor terkait (cascade delete)."""
-    AssessmentController.delete_aspect(db, aspect_id)
-    return ApiResponse(
-        success=True,
-        message=f"Kategori aspek dengan ID {aspect_id} beserta seluruh skor terkait berhasil dihapus",
-        data=None
-    )
-
-
 # --- ENDPOINTS TRANSAKSI PENILAIAN & PREDIKSI ML ---
 
 @router.post("/assessments", response_model=ApiResponse[AssessmentResponse], status_code=status.HTTP_201_CREATED)
@@ -141,7 +81,8 @@ def create_assessment(
     current_user: User = Depends(AuthController.get_current_user)
 ):
     """
-    Menyimpan sesi penilaian baru dan memicu model Machine Learning untuk prediksi serta kontribusi SHAP.
+    Menyimpan sesi penilaian baru dengan semua nilai dan deskripsi mapel/aspek,
+    lalu memicu prediksi Machine Learning (Random Forest + SHAP).
     """
     new_assessment = AssessmentController.create_assessment(db, assessment, current_user)
     return ApiResponse(

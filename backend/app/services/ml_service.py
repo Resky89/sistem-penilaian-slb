@@ -21,6 +21,28 @@ STOPWORDS = [
     'rahman', 'khansa', 'robi', 'roby'
 ]
 
+MAPEL_CONFIG = [
+    ("pai_score", "pai_desc", "PAI & Budi Pekerti"),
+    ("pkn_score", "pkn_desc", "PKn"),
+    ("ind_score", "ind_desc", "Bahasa Indonesia"),
+    ("mat_score", "mat_desc", "Matematika"),
+    ("ipas_score", "ipas_desc", "IPAS"),
+    ("ing_score", "ing_desc", "Bahasa Inggris"),
+    ("art_score", "art_desc", "Seni Budaya"),
+    ("pjok_score", "pjok_desc", "PJOK"),
+    ("sun_score", "sun_desc", "B. Sunda"),
+    ("pro_score", "pro_desc", "Program Khusus"),
+    (None, "pramuka_desc", "Ekskul Pramuka"),
+    (None, "konsentrasi_desc", "Konsentrasi"),
+    (None, "motorik_desc", "Motorik"),
+    (None, "interaksi_desc", "Interaksi dan Komunikasi"),
+    (None, "emosi_desc", "Emosi"),
+    (None, "bina_diri_desc", "Bina Diri"),
+    (None, "membaca_desc", "Membaca"),
+    (None, "menulis_desc", "Menulis"),
+    (None, "berhitung_desc", "Berhitung"),
+]
+
 class MLService:
     _model = None
     _tfidf = None
@@ -31,7 +53,6 @@ class MLService:
     def load_models(cls):
         """Memuat objek biner model ML ke memori."""
         if cls._model is None:
-            # Menggunakan relative path ke folder models_ml
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             model_dir = os.path.join(base_dir, "models_ml")
             
@@ -49,103 +70,136 @@ class MLService:
         if not isinstance(text, str):
             return ""
         text = text.lower()
-        # Hilangkan tanda baca
         text = re.sub(r'[^a-zA-Z\s]', ' ', text)
-        # Tokenisasi & Stopwords Removal
         words = text.split()
         words = [w for w in words if w not in STOPWORDS and len(w) > 2]
         return " ".join(words)
 
     @classmethod
-    def generate_iep_recommendation(cls, label: str, aspect_name: str) -> str:
-        """Menghasilkan rekomendasi PPI (IEP) secara otomatis berdasarkan label prediksi dan aspek."""
-        recommendations = {
-            "Sangat Baik": (
-                f"Siswa telah menunjukkan kemampuan yang luar biasa dalam aspek {aspect_name}. "
-                "Disarankan untuk memberikan pengayaan materi tingkat lanjut agar bakat dan potensi "
-                "siswa dapat berkembang secara optimal."
-            ),
-            "Cukup": (
-                f"Siswa sudah menunjukkan perkembangan yang cukup baik dalam aspek {aspect_name}, "
-                "namun masih membutuhkan latihan berkala. Pendekatan pembelajaran terstruktur dan "
-                "apresiasi kecil (reward) disarankan untuk menjaga motivasi belajarnya."
-            ),
-            "Kurang": (
-                f"Siswa membutuhkan bimbingan intensif dan perhatian lebih dalam aspek {aspect_name}. "
-                "Disarankan untuk menyederhanakan instruksi tugas, menggunakan media visual yang konkret, "
-                "serta melakukan pendampingan secara langsung (one-on-one) agar siswa dapat memahami konsep dasar."
-            )
-        }
-        return recommendations.get(label, f"Siswa memerlukan pendampingan berkelanjutan dalam aspek {aspect_name}.")
-
-    @classmethod
-    def predict(cls, numeric_score: float, narrative_text: str, aspect_name: str) -> Dict[str, Any]:
+    def predict_subject(cls, score: float, text: str) -> Dict[str, Any]:
         """
-        Melakukan prediksi klasifikasi perkembangan dan kontribusi fitur SHAP.
+        Melakukan prediksi status perkembangan (Label) dan penjelasan SHAP
+        untuk satu mapel/aspek tertentu.
         """
-        # Pastikan model sudah ter-load
         cls.load_models()
-
-        # 1. Preprocessing Deskripsi
-        cleaned_text = cls.clean_text(narrative_text)
-        
-        # 2. Transformasi TF-IDF
+        cleaned_text = cls.clean_text(text)
         X_tfidf = cls._tfidf.transform([cleaned_text]).toarray()
-        
-        # 3. Gabungkan dengan Nilai Angka
-        X_nilai = np.array([[float(numeric_score)]])
+        X_nilai = np.array([[float(score)]])
         X_combined = np.hstack([X_nilai, X_tfidf])
 
-        # 4. Jalankan Prediksi (MultiOutput)
-        # Preds shape: (1, 2) -> [[aspek_idx, label_idx]]
+        # Predict (MultiOutput Classifier)
         preds = cls._model.predict(X_combined)
-
-        # 5. Decode Hasil Prediksi
         pred_label_idx = int(preds[0][1])
         decoded_label = cls._encoders['le_label'].inverse_transform([pred_label_idx])[0]
 
-        # Estimasi probabilitas jika tersedia
-        prob_score = None
+        # Probability score
+        prob_score = 0.0
         try:
-            # Model target 'Label' adalah estimator indeks 1
             probs = cls._model.estimators_[1].predict_proba(X_combined)
             prob_score = float(probs[0][pred_label_idx])
         except Exception:
             pass
 
-        # 6. Hitung SHAP Values untuk Menjelaskan Prediksi Label
-        shap_explanation = {}
+        # SHAP Explanation
+        shap_features = []
+        shap_values = []
         try:
             shap_vals = cls._explainer_label.shap_values(X_combined)
-            feature_names = ["Nilai Kuantitatif"] + list(cls._tfidf.get_feature_names_out())
-            
-            # Handle modern SHAP return formats defensively
+            feature_names = ["Nilai"] + list(cls._tfidf.get_feature_names_out())
+
             if isinstance(shap_vals, np.ndarray) and len(shap_vals.shape) == 3:
                 class_shap_vals = shap_vals[0, :, pred_label_idx]
             elif isinstance(shap_vals, list):
                 class_shap_vals = shap_vals[pred_label_idx][0]
             else:
                 class_shap_vals = shap_vals[0]
-            
-            feat_contribs = []
+
+            # Filter out zero/tiny values and sort by absolute contribution
+            contribs = []
             for name, val in zip(feature_names, class_shap_vals):
                 if abs(val) > 0.0001:
-                    feat_contribs.append({"feature": name, "shap_value": float(val)})
+                    contribs.append((name, float(val)))
             
-            feat_contribs = sorted(feat_contribs, key=lambda x: abs(x["shap_value"]), reverse=True)
-            shap_explanation = {
-                "base_value": float(cls._explainer_label.expected_value[pred_label_idx]),
-                "predictions_contributions": feat_contribs[:8]
-            }
+            contribs = sorted(contribs, key=lambda x: abs(x[1]), reverse=True)[:8]
+            for name, val in contribs:
+                shap_features.append(name)
+                shap_values.append(val)
         except Exception as e:
-            shap_explanation = {"error": f"Gagal menghitung SHAP: {str(e)}"}
-
-        # 7. Generate Rekomendasi PPI
-        iep_rec = cls.generate_iep_recommendation(decoded_label, aspect_name)
+            print(f"Gagal menghitung SHAP: {e}")
 
         return {
-            "development_status": decoded_label,
-            "probability_score": prob_score,
-            "iep_recommendation": iep_rec,
-            "shap_explanation": shap_explanation
+            "status": decoded_label,
+            "probability": prob_score,
+            "shap": {
+                "features": shap_features,
+                "values": shap_values
+            }
+        }
+
+    @classmethod
+    def predict(cls, assessment_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Melakukan prediksi untuk seluruh mapel/aspek yang diinput secara individu.
+        """
+        cls.load_models()
+        
+        predictions_list = []
+        status_counts = {}
+
+        for score_field, desc_field, display_name in MAPEL_CONFIG:
+            # Dapatkan score dan description
+            score = 0.0
+            if score_field:
+                score_val = assessment_data.get(score_field)
+                if score_val is not None:
+                    score = float(score_val)
+            
+            desc = assessment_data.get(desc_field)
+            
+            # Kita lakukan prediksi jika ada data deskripsi atau nilai yang diisi
+            # (Untuk mapel, jika nilai atau deskripsi diisi. Untuk aspek, jika deskripsi diisi)
+            has_data = False
+            if score_field:
+                if assessment_data.get(score_field) is not None or (desc and desc.strip()):
+                    has_data = True
+            else:
+                if desc and desc.strip():
+                    has_data = True
+
+            if has_data:
+                # Run prediction
+                res = cls.predict_subject(score, desc if desc else "")
+                
+                predictions_list.append({
+                    "subject": display_name,
+                    "status": res["status"],
+                    "score": score if score_field and assessment_data.get(score_field) is not None else None,
+                    "desc": desc if desc else "-",
+                    "probability": res["probability"],
+                    "shap": res["shap"]
+                })
+
+                # Count labels for summary
+                status_counts[res["status"]] = status_counts.get(res["status"], 0) + 1
+
+        if not predictions_list:
+            # Fallback jika tidak ada data sama sekali
+            return {
+                "development_status": "Belum Dinilai",
+                "probability_score": 0.0,
+                "iep_recommendation": "",
+                "shap_explanation": {"predictions": []}
+            }
+
+        # Menentukan status perkembangan utama berdasarkan mayoritas
+        majority_status = max(status_counts, key=status_counts.get)
+        avg_prob = sum(p["probability"] for p in predictions_list) / len(predictions_list)
+
+        return {
+            "development_status": majority_status,
+            "probability_score": avg_prob,
+            "iep_recommendation": "", # Rekomendasi PPI dihilangkan sesuai permintaan user
+            "shap_explanation": {
+                "predictions": predictions_list
+            }
         }
