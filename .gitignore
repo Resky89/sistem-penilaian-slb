@@ -12,3 +12,12 @@ frontend/vendor/
 frontend/node_modules/
 frontend/.env
 frontend/database/*.sqlite
+
+# Python bytecode
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+backend/.env
