@@ -22,7 +22,7 @@
 </div>
 
 {{-- Tabel Penilaian --}}
-<x-table :headers="['NIS', 'Nama Siswa', 'Disabilitas', 'Status Perkembangan', 'Aksi']">
+<x-table :headers="['NIS', 'Nama Siswa', 'Ketunaan', 'Status Perkembangan', 'Aksi']">
     <tbody id="penilaian-table-body">
         <tr>
             <td colspan="5" class="text-center">Memuat data penilaian...</td>

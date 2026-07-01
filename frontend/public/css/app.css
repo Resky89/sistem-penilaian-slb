@@ -1188,3 +1188,17 @@ a:hover {
 .student-search__selected-pill svg {
     color: var(--color-primary);
 }
+
+/* --- Inline Validation Styles --- */
+.form-input.is-invalid,
+.form-select.is-invalid,
+.form-textarea.is-invalid {
+    border-color: var(--color-danger) !important;
+}
+
+.form-input.is-invalid:focus,
+.form-select.is-invalid:focus,
+.form-textarea.is-invalid:focus {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15) !important;
+}
+

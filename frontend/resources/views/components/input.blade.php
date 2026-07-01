@@ -21,4 +21,5 @@
         {{ $required ? 'required' : '' }}
         {{ $attributes }}
     >
+    <div class="invalid-feedback" id="error-{{ $name }}" style="display: none; font-size: 0.8rem; color: var(--color-danger); margin-top: 4px; font-weight: 500;"></div>
 </div>

@@ -11,6 +11,75 @@
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <script>
         const API_URL = "http://localhost:8001/api";
+
+        function clearFormErrors(form) {
+            if (typeof form === 'string') {
+                form = document.getElementById(form);
+            }
+            if (!form) return;
+            
+            form.querySelectorAll('.form-input, .form-select, .form-textarea').forEach(el => {
+                el.classList.remove('is-invalid');
+            });
+            
+            form.querySelectorAll('.invalid-feedback').forEach(el => {
+                el.style.display = 'none';
+                el.textContent = '';
+            });
+            
+            const generalAlert = form.querySelector('.alert-general');
+            if (generalAlert) {
+                generalAlert.style.display = 'none';
+                generalAlert.textContent = '';
+            }
+        }
+
+        function showFormErrors(form, data, fieldMapping = {}) {
+            if (typeof form === 'string') {
+                form = document.getElementById(form);
+            }
+            if (!form) return;
+            
+            clearFormErrors(form);
+            
+            if (data.error_code === 'VALIDATION_ERROR' && Array.isArray(data.details)) {
+                data.details.forEach(err => {
+                    let fieldName = err.field;
+                    if (fieldMapping[fieldName]) {
+                        fieldName = fieldMapping[fieldName];
+                    }
+                    
+                    let inputEl = form.querySelector(`#${fieldName}`) || form.querySelector(`[name="${fieldName}"]`);
+                    if (!inputEl) {
+                        inputEl = form.querySelector(`[name$="${fieldName}"]`);
+                    }
+                    
+                    if (inputEl) {
+                        inputEl.classList.add('is-invalid');
+                        let feedbackEl = form.querySelector(`#error-${inputEl.id || inputEl.name}`);
+                        if (!feedbackEl) {
+                            feedbackEl = document.createElement('div');
+                            feedbackEl.id = `error-${inputEl.id || inputEl.name}`;
+                            feedbackEl.className = 'invalid-feedback';
+                            feedbackEl.style.cssText = 'font-size: 0.8rem; color: var(--color-danger); margin-top: 4px; font-weight: 500;';
+                            inputEl.parentNode.appendChild(feedbackEl);
+                        }
+                        feedbackEl.textContent = err.message;
+                        feedbackEl.style.display = 'block';
+                    }
+                });
+            } else {
+                const generalAlert = form.querySelector('.alert-general');
+                if (generalAlert) {
+                    generalAlert.textContent = data.message || 'Terjadi kesalahan sistem.';
+                    generalAlert.style.display = 'block';
+                } else if (typeof showToast === 'function') {
+                    showToast('error', data.message || 'Terjadi kesalahan sistem.');
+                } else {
+                    alert(data.message || 'Terjadi kesalahan sistem.');
+                }
+            }
+        }
         
         // Auth Guard
         if (!localStorage.getItem('jwt_token')) {

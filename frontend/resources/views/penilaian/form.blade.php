@@ -9,6 +9,7 @@
 
 <form id="form-penilaian">
     @csrf
+    <div class="alert-general" style="display: none; margin-bottom: 1.5rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); background-color: #fef2f2; border: 1px solid #fecaca; color: var(--color-danger); font-size: var(--font-size-sm); font-weight: 500;"></div>
 
     {{-- Top Action Bar --}}
     <div class="form-top-action" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start;">
@@ -457,6 +458,7 @@ document.addEventListener('DOMContentLoaded', function () {
     =================================================== */
     document.getElementById('form-penilaian').addEventListener('submit', async function (e) {
         e.preventDefault();
+        clearFormErrors(this);
 
         const studentId = hiddenInput.value;
         if (!studentId) {
@@ -514,6 +516,19 @@ document.addEventListener('DOMContentLoaded', function () {
             </svg>
             Menganalisis &amp; Menyimpan...`;
 
+        const mapping = {
+            student_id: 'student-search-input',
+            academic_year: 'tahun-ajaran',
+            semester: 'semester'
+        };
+        mapelFields.forEach(field => {
+            mapping[`${field}_score`] = `score-${field}`;
+            mapping[`${field}_desc`] = `desc-${field}`;
+        });
+        portofolioFields.forEach(field => {
+            mapping[`${field}_desc`] = `desc-${field}`;
+        });
+
         try {
             const res = await fetch(`${API_URL}/assessments`, {
                 method: 'POST',
@@ -530,11 +545,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 sessionStorage.setItem('latest_assessment_result', JSON.stringify(data.data));
                 window.location.href = `{{ route("penilaian.hasil") }}?student_id=${studentId}`;
             } else {
+                showFormErrors(this, data, mapping);
                 showToast('error', data.message || 'Gagal memproses penilaian.');
                 resetSubmitBtn(submitBtn);
             }
         } catch (err) {
             console.error(err);
+            showFormErrors(this, { message: 'Terjadi kesalahan jaringan.' });
             showToast('error', 'Terjadi kesalahan jaringan.');
             resetSubmitBtn(submitBtn);
         }

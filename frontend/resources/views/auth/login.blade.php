@@ -8,6 +8,8 @@
 
     <form id="form-login" method="POST">
         @csrf
+        <div class="alert-general" style="display: none; margin-bottom: 1rem; padding: 0.75rem; border-radius: var(--radius-md); background-color: #fef2f2; border: 1px solid #fecaca; color: var(--color-danger); font-size: var(--font-size-sm); font-weight: 500;"></div>
+
         <x-input name="username" label="Username" placeholder="Masukkan username" :required="true" />
         <x-input type="password" name="password" label="Password" placeholder="Masukkan password" :required="true" />
 
@@ -31,6 +33,8 @@
 
     document.getElementById('form-login').addEventListener('submit', async function(e) {
         e.preventDefault();
+        clearFormErrors(this);
+
         const usernameVal = document.getElementById('username').value;
         const passwordVal = document.getElementById('password').value;
 
@@ -65,13 +69,13 @@
                 
                 window.location.href = '{{ route("dashboard") }}';
             } else {
-                alert(data.message || 'Login gagal. Periksa kembali username dan password Anda.');
+                showFormErrors(this, data);
                 button.disabled = false;
                 button.textContent = 'Login';
             }
         } catch (err) {
             console.error(err);
-            alert('Gagal menghubungkan ke server backend API.');
+            showFormErrors(this, { message: 'Gagal menghubungkan ke server backend API.' });
             button.disabled = false;
             button.textContent = 'Login';
         }
