@@ -117,3 +117,46 @@ def get_assessments_by_student(
         message=f"Riwayat penilaian untuk siswa ID {student_id} berhasil diambil",
         data=assessments
     )
+
+@router.get("/assessments/{assessment_id}", response_model=ApiResponse[AssessmentResponse])
+def get_assessment(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthController.get_current_user)
+):
+    """Mengambil detail penilaian berdasarkan ID."""
+    assessment = AssessmentController.get_assessment_by_id(db, assessment_id)
+    return ApiResponse(
+        success=True,
+        message=f"Detail penilaian dengan ID {assessment_id} berhasil diambil",
+        data=assessment
+    )
+
+@router.put("/assessments/{assessment_id}", response_model=ApiResponse[AssessmentResponse])
+def update_assessment(
+    assessment_id: int,
+    assessment: AssessmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthController.get_current_user)
+):
+    """Mengubah data penilaian berdasarkan ID dan memperbarui prediksi."""
+    updated = AssessmentController.update_assessment(db, assessment_id, assessment)
+    return ApiResponse(
+        success=True,
+        message=f"Penilaian dengan ID {assessment_id} berhasil diperbarui",
+        data=updated
+    )
+
+@router.delete("/assessments/{assessment_id}", response_model=ApiResponse[None])
+def delete_assessment(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthController.get_current_user)
+):
+    """Menghapus data penilaian berdasarkan ID."""
+    AssessmentController.delete_assessment(db, assessment_id)
+    return ApiResponse(
+        success=True,
+        message=f"Penilaian dengan ID {assessment_id} berhasil dihapus",
+        data=None
+    )

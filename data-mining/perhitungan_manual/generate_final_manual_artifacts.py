@@ -46,6 +46,8 @@ STOPWORDS = set([
 def clean_text(text):
     if not isinstance(text, str):
         return ""
+    # Hapus prefix "Deskripsi Perkembangan:" secara case-insensitive
+    text = re.sub(r'(?i)deskripsi perkembangan\s*:\s*', '', text)
     text = text.lower()
     text = re.sub(r"[^a-zA-Z\s]", " ", text)
     words = [w for w in text.split() if len(w) > 2 and w not in STOPWORDS]
@@ -125,6 +127,8 @@ def load_data():
     data = data[[c for c in need if c in data.columns]].copy()
     data['Nilai'] = pd.to_numeric(data['Nilai'], errors='coerce').fillna(0)
     data = data.dropna(subset=['Aspek / Mapel','Deskripsi Penilaian','Label']).reset_index(drop=True)
+    # Hapus prefix "Deskripsi Perkembangan:" secara case-insensitive dari kolom asli
+    data['Deskripsi Penilaian'] = data['Deskripsi Penilaian'].astype(str).str.replace(r'(?i)deskripsi perkembangan\s*:\s*', '', regex=True)
     data.insert(0, 'ID_Data', np.arange(1, len(data)+1))
     data['Teks Bersih'] = data['Deskripsi Penilaian'].apply(clean_text)
     return data

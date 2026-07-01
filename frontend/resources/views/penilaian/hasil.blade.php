@@ -3,8 +3,12 @@
 @section('title', 'Hasil Klasifikasi - SIPACA-SLB')
 
 @section('content')
-<div class="page-header">
-    <h1 class="page-header__title">Hasil Klasifikasi & Analisis Siswa</h1>
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <h1 class="page-header__title">Hasil Klasifikasi &amp; Analisis Siswa</h1>
+    <a href="{{ route('penilaian.index') }}" class="btn btn--outline" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        Kembali ke Daftar
+    </a>
 </div>
 
 <div id="loading-container" class="text-center" style="padding: 3rem 0;">
@@ -167,25 +171,113 @@
             return `<span style="${style}">${escapeHtml(status || 'N/A')}</span>`;
         }
 
-        // Helper: Render Mini SHAP Chart
-        function renderShapChart(shap) {
+        // Helper: Generate SHAP Narrative in plain Indonesian (only using words present in description)
+        function generateShapNarrative(status, score, shap, desc) {
+            if (!shap || !shap.features || shap.features.length === 0) {
+                return "Tidak ada indikator atau nilai penting yang memberikan pengaruh dominan pada hasil penilaian aspek ini.";
+            }
+
+            const posTerms = [];
+            const negTerms = [];
+            let hasNilaiPos = false;
+            let hasNilaiNeg = false;
+            
+            const cleanDesc = (desc || '').toLowerCase();
+
+            shap.features.forEach((feature, idx) => {
+                const val = shap.values[idx];
+                const cleanName = feature.replace(/^tfidf_/, '');
+                
+                if (cleanName === 'Nilai') {
+                    if (val > 0) hasNilaiPos = true;
+                    else if (val < 0) hasNilaiNeg = true;
+                } else {
+                    // Hanya gunakan kata jika benar-benar muncul dalam teks deskripsi
+                    const isPresent = cleanDesc.includes(cleanName.toLowerCase());
+                    if (isPresent) {
+                        if (val > 0) {
+                            posTerms.push(`<strong>'${escapeHtml(cleanName)}'</strong>`);
+                        } else if (val < 0) {
+                            negTerms.push(`<strong>'${escapeHtml(cleanName)}'</strong>`);
+                        }
+                    }
+                }
+            });
+
+            let text = `Siswa diprediksi berada pada status <span style="font-weight: 700; color: ${
+                status === 'Baik' ? '#15803d' : (status === 'Cukup' ? '#1d4ed8' : '#b45309')
+            };">${escapeHtml(status)}</span>. `;
+
+            const posParts = [];
+            if (hasNilaiPos && score !== null && score !== undefined && score !== '-') {
+                posParts.push(`capaian nilai kuantitatif sebesar <strong>${score}</strong>`);
+            }
+            if (posTerms.length > 0) {
+                const termsToShow = posTerms.slice(0, 3);
+                if (termsToShow.length === 1) {
+                    posParts.push(`kemunculan istilah ${termsToShow[0]}`);
+                } else {
+                    const last = termsToShow.pop();
+                    posParts.push(`kemunculan istilah ${termsToShow.join(', ')} serta ${last}`);
+                }
+            }
+
+            if (posParts.length > 0) {
+                if (posParts.length === 1) {
+                    text += `Keputusan model ini didukung kuat oleh ${posParts[0]} yang mendorong peluang predikat ini. `;
+                } else {
+                    text += `Hal ini dipengaruhi secara positif oleh kombinasi dari ${posParts.join(' dan ')} yang memperkuat kecocokan siswa dengan kategori tersebut. `;
+                }
+            } else {
+                text += `Keputusan model ini didasarkan pada kecocokan pola umum deskripsi siswa pada kategori predikat ini. `;
+            }
+
+            const negParts = [];
+            if (hasNilaiNeg && score !== null && score !== undefined && score !== '-') {
+                negParts.push(`perolehan nilai kuantitatif (<strong>${score}</strong>) yang dinilai kurang optimal oleh model`);
+            }
+            if (negTerms.length > 0) {
+                const termsToShow = negTerms.slice(0, 3);
+                if (termsToShow.length === 1) {
+                    negParts.push(`kemunculan catatan istilah ${termsToShow[0]}`);
+                } else {
+                    const last = termsToShow.pop();
+                    negParts.push(`adanya kata kunci seperti ${termsToShow.join(', ')} dan ${last}`);
+                }
+            }
+
+            if (negParts.length > 0) {
+                if (negParts.length === 1) {
+                    text += `Namun, terdapat faktor korektif berupa ${negParts[0]} yang menjadi area evaluasi.`;
+                } else {
+                    text += `Namun, terdapat beberapa indikator yang perlu diperhatikan seperti ${negParts.join(' serta ')} sebagai catatan pendampingan siswa.`;
+                }
+            } else {
+                text += `Model tidak mendeteksi adanya faktor penghambat atau catatan koreksi yang signifikan dari istilah yang dituliskan.`;
+            }
+
+            return text;
+        }
+
+        // Helper: Render XAI Section (Narrative + Collapsible SHAP Chart)
+        function renderXaiSection(status, score, shap, desc) {
             if (!shap || !shap.features || shap.features.length === 0) {
                 return `<p style="font-size: var(--font-size-xs); color: var(--color-text-muted); margin-top: 0.5rem; font-style: italic;">Tidak ada kontribusi fitur SHAP signifikan.</p>`;
             }
 
-            let html = `
-            <div style="margin-top: 0.75rem; border-top: 1px dashed #e2e8f0; padding-top: 0.75rem;">
-                <span style="font-size: var(--font-size-xs); font-weight: 600; color: var(--color-text-secondary); display: block; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">xAI SHAP - Kontribusi Fitur:</span>
-                <div style="display: flex; flex-direction: column; gap: 0.375rem;">
+            const narrative = generateShapNarrative(status, score, shap, desc);
+
+            let chartHtml = `
+                <div style="display: flex; flex-direction: column; gap: 0.375rem; padding-top: 0.25rem;">
             `;
 
             const maxVal = Math.max(...shap.values.map(Math.abs), 0.01);
 
             shap.features.forEach((feature, idx) => {
                 const val = shap.values[idx];
-                const absPct = Math.min((Math.abs(val) / maxVal) * 50, 50); // Maksimal 50% dari tengah
+                const absPct = Math.min((Math.abs(val) / maxVal) * 50, 50);
 
-                html += `
+                chartHtml += `
                 <div style="display: flex; align-items: center; min-height: 24px;">
                     <div style="width: 140px; font-size: 11px; font-weight: 500; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(feature)}">
                         ${escapeHtml(feature)}
@@ -204,11 +296,30 @@
                 `;
             });
 
-            html += `
+            chartHtml += `</div>`;
+
+            return `
+            <div style="margin-top: 0.75rem; border-top: 1px dashed #e2e8f0; padding-top: 0.75rem;">
+                <!-- Narasi Penjelasan untuk Guru -->
+                <div style="background-color: #f8fafc; border-left: 4px solid var(--color-primary); padding: 0.75rem 1rem; border-radius: var(--radius-sm); font-size: 13px; color: var(--color-text); margin-bottom: 0.75rem; line-height: 1.6; box-shadow: var(--shadow-sm);">
+                    <div style="font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--color-primary); margin-bottom: 0.375rem; display: flex; align-items: center; gap: 0.375rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        Analisis Guru (Penjelasan Model AI)
+                    </div>
+                    <div style="color: var(--color-text-secondary);">${narrative}</div>
                 </div>
+                
+                <!-- Grafik Kontribusi (SHAP) - Kollapsibel -->
+                <details style="margin-top: 0.5rem;">
+                    <summary style="font-size: 11px; font-weight: 600; color: var(--color-text-secondary); outline: none; padding: 0.25rem 0; cursor: pointer; user-select: none;">
+                        Lihat Grafik Kontribusi Fitur (Teknis/SHAP)
+                    </summary>
+                    <div style="margin-top: 0.5rem; padding: 0.75rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: var(--radius-sm);">
+                        ${chartHtml}
+                    </div>
+                </details>
             </div>
             `;
-            return html;
         }
 
         // --- Render Tabel Akademik ---
@@ -244,7 +355,7 @@
                         <div style="color: var(--color-text); line-height: 1.5; font-size: var(--font-size-sm); background: #f8fafc; padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0;">
                             ${escapeHtml(p.desc || '-')}
                         </div>
-                        ${renderShapChart(p.shap)}
+                        ${renderXaiSection(p.status, p.score !== null && p.score !== undefined ? p.score : '-', p.shap, p.desc)}
                     </td>
                 `;
                 academicBody.appendChild(tr);
@@ -282,7 +393,7 @@
                     <p style="color: var(--color-text-secondary); line-height: 1.6; font-size: var(--font-size-sm); background: #ffffff; padding: 0.875rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0; margin-bottom: 0.5rem;">
                         ${escapeHtml(p.desc)}
                     </p>
-                    ${renderShapChart(p.shap)}
+                    ${renderXaiSection(p.status, '-', p.shap, p.desc)}
                 `;
                 portfolioContainer.appendChild(itemDiv);
             });

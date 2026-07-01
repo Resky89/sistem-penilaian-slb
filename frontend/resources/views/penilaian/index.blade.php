@@ -101,6 +101,20 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
                     </a>
                 `;
+
+                // Button to edit
+                actionButtons += `
+                    <a href="${'{{ route("penilaian.form") }}'}?edit_id=${latestAssessment.id}" class="btn btn--ghost" title="Edit Penilaian Terakhir" style="padding: 0.5rem; color: #1d4ed8;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    </a>
+                `;
+
+                // Button to delete
+                actionButtons += `
+                    <button onclick="confirmDeleteAssessment(${latestAssessment.id})" class="btn btn--ghost" title="Hapus Penilaian Terakhir" style="padding: 0.5rem; color: var(--color-danger);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    </button>
+                `;
             }
 
             // Always add a button to perform a new assessment
@@ -141,6 +155,33 @@
         renderPenilaianTable();
         allStudents = originalAllStudents;
     });
+
+    async function confirmDeleteAssessment(id) {
+        if (!confirm('Apakah Anda yakin ingin menghapus data penilaian terakhir ini? Tindakan ini tidak dapat dibatalkan.')) {
+            return;
+        }
+        
+        const token = localStorage.getItem('jwt_token');
+        try {
+            const res = await fetch(`${API_URL}/assessments/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                showToast('success', 'Penilaian berhasil dihapus!');
+                loadPenilaianData();
+            } else {
+                showToast('error', data.message || 'Gagal menghapus penilaian.');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('error', 'Terjadi kesalahan jaringan.');
+        }
+    }
 
     function escapeHtml(text) {
         if (!text) return '';

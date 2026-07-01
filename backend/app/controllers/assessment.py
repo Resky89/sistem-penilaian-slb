@@ -12,15 +12,15 @@ from typing import List
 
 # Label nama untuk setiap field skor mapel — digunakan untuk menyusun narasi
 SUBJECT_SCORE_FIELDS = [
-    ("pai_score", "pai_desc", "PAI & Budi Pekerti"),
-    ("pkn_score", "pkn_desc", "PKn"),
+    ("pai_score", "pai_desc", "Pendidikan Agama Islam dan Budi Pekerti"),
+    ("pkn_score", "pkn_desc", "Pendidikan Pancasila dan Kewarganegaraan"),
     ("ind_score", "ind_desc", "Bahasa Indonesia"),
     ("mat_score", "mat_desc", "Matematika"),
-    ("ipas_score", "ipas_desc", "IPAS"),
+    ("ipas_score", "ipas_desc", "Ilmu Pengetahuan Alam dan Sosial"),
     ("ing_score", "ing_desc", "Bahasa Inggris"),
     ("art_score", "art_desc", "Seni Budaya"),
-    ("pjok_score", "pjok_desc", "PJOK"),
-    ("sun_score", "sun_desc", "B. Sunda"),
+    ("pjok_score", "pjok_desc", "Pendidikan Jasmani, Olahraga, dan Kesehatan"),
+    ("sun_score", "sun_desc", "Bahasa Sunda"),
     ("pro_score", "pro_desc", "Program Khusus"),
 ]
 
@@ -154,3 +154,65 @@ class AssessmentController:
                 detail=f"Siswa dengan ID {student_id} tidak ditemukan"
             )
         return AssessmentRepository.get_by_student_id(db, student_id)
+
+    @staticmethod
+    def get_assessment_by_id(db: Session, assessment_id: int) -> AssessmentResponse:
+        assessment = AssessmentRepository.get_by_id(db, assessment_id)
+        if not assessment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Penilaian dengan ID {assessment_id} tidak ditemukan"
+            )
+        return assessment
+
+    @staticmethod
+    def update_assessment(db: Session, assessment_id: int, assessment_in: AssessmentCreate) -> AssessmentResponse:
+        # 1. Validasi Sesi Penilaian
+        db_assessment = AssessmentRepository.get_by_id(db, assessment_id)
+        if not db_assessment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Penilaian dengan ID {assessment_id} tidak ditemukan"
+            )
+
+        # 2. Validasi Siswa
+        student = StudentRepository.get_by_id(db, assessment_in.student_id)
+        if not student:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Siswa dengan ID {assessment_in.student_id} tidak ditemukan"
+            )
+
+        # 3. Jalankan Prediksi ML & SHAP per Mapel/Aspek
+        try:
+            prediction_res = MLService.predict(assessment_in.dict())
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Gagal memproses prediksi Machine Learning: {str(e)}"
+            )
+
+        # 4. Simpan Perubahan ke Database
+        try:
+            updated = AssessmentRepository.update_transaction(
+                db=db,
+                assessment_id=assessment_id,
+                assessment_in=assessment_in,
+                prediction_result=prediction_res
+            )
+            return updated
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Gagal memperbarui data penilaian di MySQL: {str(e)}"
+            )
+
+    @staticmethod
+    def delete_assessment(db: Session, assessment_id: int) -> bool:
+        db_assessment = AssessmentRepository.get_by_id(db, assessment_id)
+        if not db_assessment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Penilaian dengan ID {assessment_id} tidak ditemukan"
+            )
+        return AssessmentRepository.delete(db, assessment_id)

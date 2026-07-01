@@ -22,15 +22,15 @@ STOPWORDS = [
 ]
 
 MAPEL_CONFIG = [
-    ("pai_score", "pai_desc", "PAI & Budi Pekerti"),
-    ("pkn_score", "pkn_desc", "PKn"),
+    ("pai_score", "pai_desc", "Pendidikan Agama Islam dan Budi Pekerti"),
+    ("pkn_score", "pkn_desc", "Pendidikan Pancasila dan Kewarganegaraan"),
     ("ind_score", "ind_desc", "Bahasa Indonesia"),
     ("mat_score", "mat_desc", "Matematika"),
-    ("ipas_score", "ipas_desc", "IPAS"),
+    ("ipas_score", "ipas_desc", "Ilmu Pengetahuan Alam dan Sosial"),
     ("ing_score", "ing_desc", "Bahasa Inggris"),
     ("art_score", "art_desc", "Seni Budaya"),
-    ("pjok_score", "pjok_desc", "PJOK"),
-    ("sun_score", "sun_desc", "B. Sunda"),
+    ("pjok_score", "pjok_desc", "Pendidikan Jasmani, Olahraga, dan Kesehatan"),
+    ("sun_score", "sun_desc", "Bahasa Sunda"),
     ("pro_score", "pro_desc", "Program Khusus"),
     (None, "pramuka_desc", "Ekskul Pramuka"),
     (None, "konsentrasi_desc", "Konsentrasi"),
@@ -69,6 +69,8 @@ class MLService:
         """Preprocessing teks deskripsi capaian sesuai dengan train_model.py"""
         if not isinstance(text, str):
             return ""
+        # Hapus prefix "Deskripsi Perkembangan:" secara case-insensitive
+        text = re.sub(r'(?i)deskripsi perkembangan\s*:\s*', '', text)
         text = text.lower()
         text = re.sub(r'[^a-zA-Z\s]', ' ', text)
         words = text.split()

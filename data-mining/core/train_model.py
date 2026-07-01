@@ -41,6 +41,8 @@ def clean_text(text):
     """Basic text cleaning for Indonesian achievement descriptions."""
     if not isinstance(text, str):
         return ""
+    # Hapus prefix "Deskripsi Perkembangan:" secara case-insensitive
+    text = re.sub(r'(?i)deskripsi perkembangan\s*:\s*', '', text)
     text = text.lower()
     # Remove punctuation
     text = re.sub(r'[^a-zA-Z\s]', ' ', text)
@@ -123,6 +125,8 @@ def load_split_data_with_recovery(split_path, raw_path):
     df['Nilai'] = df['Nilai'].fillna(df['Nilai'].mean() if not df['Nilai'].isna().all() else 0)
     
     df.dropna(subset=['Deskripsi Penilaian', 'Aspek / Mapel', 'Label'], inplace=True)
+    # Hapus prefix "Deskripsi Perkembangan:" secara case-insensitive dari kolom asli
+    df['Deskripsi Penilaian'] = df['Deskripsi Penilaian'].astype(str).str.replace(r'(?i)deskripsi perkembangan\s*:\s*', '', regex=True)
     return df
 
 def train_system():

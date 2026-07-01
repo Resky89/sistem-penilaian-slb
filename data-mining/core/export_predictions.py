@@ -13,6 +13,7 @@ OUTPUT_PATH = "HASIL_PREDIKSI_DETAIL.xlsx"
 def clean_text(text):
     if not isinstance(text, str):
         return ""
+    text = re.sub(r'(?i)deskripsi perkembangan\s*:\s*', '', text)
     text = text.lower()
     text = re.sub(r'[^a-zA-Z0-9\s]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
@@ -52,6 +53,8 @@ def export_results():
 
         # Process each row
         rows_to_process = df.dropna(subset=['Deskripsi Penilaian']).copy()
+        # Hapus prefix "Deskripsi Perkembangan:" secara case-insensitive
+        rows_to_process['Deskripsi Penilaian'] = rows_to_process['Deskripsi Penilaian'].astype(str).str.replace(r'(?i)deskripsi perkembangan\s*:\s*', '', regex=True)
         
         if rows_to_process.empty:
             continue

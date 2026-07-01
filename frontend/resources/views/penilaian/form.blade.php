@@ -3,8 +3,12 @@
 @section('title', 'Form Penilaian - SIPACA-SLB')
 
 @section('content')
-<div class="page-header">
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
     <h1 class="page-header__title">Form Penilaian</h1>
+    <a href="{{ route('penilaian.index') }}" class="btn btn--outline" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        Kembali ke Daftar
+    </a>
 </div>
 
 <form id="form-penilaian">
@@ -113,15 +117,15 @@
 
         @php
         $mapelRapor = [
-            ['id' => 'pai',  'label' => 'PAI & Budi Pekerti',  'has_score' => true],
-            ['id' => 'pkn',  'label' => 'PKn',                 'has_score' => true],
+            ['id' => 'pai',  'label' => 'Pendidikan Agama Islam dan Budi Pekerti',  'has_score' => true],
+            ['id' => 'pkn',  'label' => 'Pendidikan Pancasila dan Kewarganegaraan',  'has_score' => true],
             ['id' => 'ind',  'label' => 'Bahasa Indonesia',    'has_score' => true],
             ['id' => 'mat',  'label' => 'Matematika',          'has_score' => true],
-            ['id' => 'ipas', 'label' => 'IPAS',                'has_score' => true],
+            ['id' => 'ipas', 'label' => 'Ilmu Pengetahuan Alam dan Sosial',                'has_score' => true],
             ['id' => 'ing',  'label' => 'Bahasa Inggris',      'has_score' => true],
             ['id' => 'art',  'label' => 'Seni Budaya',         'has_score' => true],
-            ['id' => 'pjok', 'label' => 'PJOK',               'has_score' => true],
-            ['id' => 'sun',  'label' => 'B. Sunda',            'has_score' => true],
+            ['id' => 'pjok', 'label' => 'Pendidikan Jasmani, Olahraga, dan Kesehatan',               'has_score' => true],
+            ['id' => 'sun',  'label' => 'Bahasa Sunda',            'has_score' => true],
             ['id' => 'pro',  'label' => 'Program Khusus',      'has_score' => true],
             ['id' => 'pramuka', 'label' => 'Ekskul Pramuka',   'has_score' => false],
         ];
@@ -212,6 +216,61 @@ document.addEventListener('DOMContentLoaded', function () {
        2. STUDENT SEARCH COMBOBOX WITH DEBOUNCE
     =================================================== */
     const token = localStorage.getItem('jwt_token');
+
+    // Parse URL query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryStudentId = urlParams.get('student_id');
+    const editId = urlParams.get('edit_id');
+
+    // Custom API Error Class for Normalization
+    class ApiError extends Error {
+        constructor(message, status, payload = null) {
+            super(message);
+            this.name = "ApiError";
+            this.status = status;
+            this.payload = payload;
+        }
+    }
+
+    // Centralized API Request Helper (Best Practice)
+    async function apiRequest(url, options = {}) {
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...options.headers
+        };
+        const config = {
+            ...options,
+            headers
+        };
+
+        try {
+            const res = await fetch(url, config);
+            let payload = null;
+            if (res.status !== 204) {
+                const text = await res.text();
+                if (text) {
+                    try {
+                        payload = JSON.parse(text);
+                    } catch (e) {
+                        payload = { success: false, message: text };
+                    }
+                }
+            }
+
+            if (!res.ok) {
+                throw new ApiError(
+                    payload?.message || `Request failed with status ${res.status}`,
+                    res.status,
+                    payload
+                );
+            }
+            return payload;
+        } catch (err) {
+            if (err instanceof ApiError) throw err;
+            throw new ApiError('Terjadi kesalahan jaringan atau server tidak merespons.', 0);
+        }
+    }
 
     // State
     let allStudents   = [];   // cache semua siswa dari API
@@ -371,16 +430,11 @@ document.addEventListener('DOMContentLoaded', function () {
         openDropdown();
 
         try {
-            const res = await fetch(`${API_URL}/students`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const data = await apiRequest(`${API_URL}/students`);
             if (data.success) {
                 allStudents = data.data;
 
                 // Auto-select if query param student_id exists
-                const urlParams = new URLSearchParams(window.location.search);
-                const queryStudentId = urlParams.get('student_id');
                 if (queryStudentId) {
                     const found = allStudents.find(s => String(s.id) === queryStudentId);
                     if (found) { selectStudent(found); return; }
@@ -388,10 +442,68 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         } catch (err) {
             console.error(err);
-            showToast('error', 'Gagal memuat daftar siswa.');
+            showToast('error', err.message || 'Gagal memuat daftar siswa.');
         }
 
         closeDropdown();
+    }
+
+    // --- Load assessment data for editing ---
+    async function loadAssessmentForEdit(id) {
+        showToast('info', 'Memuat data penilaian lama...');
+        
+        try {
+            // Load students list first for selection matching
+            const dataS = await apiRequest(`${API_URL}/students`);
+            if (dataS.success) {
+                allStudents = dataS.data;
+            }
+
+            const data = await apiRequest(`${API_URL}/assessments/${id}`);
+            
+            if (data.success) {
+                const assessment = data.data;
+                
+                // Select student
+                if (assessment.student) {
+                    selectStudent(assessment.student);
+                    // Disable changing student when in edit mode
+                    clearBtn.style.display = 'none';
+                    searchInput.disabled = true;
+                    searchInput.placeholder = 'Pilihan siswa terkunci saat edit';
+                }
+                
+                // Set metadata
+                document.getElementById('tahun-ajaran').value = assessment.academic_year;
+                document.getElementById('semester').value = assessment.semester;
+                
+                // Populate mapel fields
+                const mapelFields = ['pai', 'pkn', 'ind', 'mat', 'ipas', 'ing', 'art', 'pjok', 'sun', 'pro'];
+                mapelFields.forEach(field => {
+                    const scoreVal = assessment[`${field}_score`];
+                    const descVal = assessment[`${field}_desc`];
+                    
+                    const scoreEl = document.getElementById(`score-${field}`);
+                    const descEl = document.getElementById(`desc-${field}`);
+                    
+                    if (scoreEl && scoreVal !== null) scoreEl.value = scoreVal;
+                    if (descEl && descVal !== null) descEl.value = descVal;
+                });
+                
+                // Populate portfolio fields
+                const portofolioFields = ['pramuka', 'konsentrasi', 'motorik', 'interaksi', 'emosi', 'bina_diri', 'membaca', 'menulis', 'berhitung'];
+                portofolioFields.forEach(field => {
+                    const descVal = assessment[`${field}_desc`];
+                    const descEl = document.getElementById(`desc-${field}`);
+                    if (descEl && descVal !== null) descEl.value = descVal;
+                });
+
+                showToast('success', 'Data penilaian lama berhasil dimuat.');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('error', err.message || 'Terjadi kesalahan saat memuat data penilaian.');
+        }
     }
 
     // --- Event Listeners ---
@@ -514,7 +626,7 @@ document.addEventListener('DOMContentLoaded', function () {
                  style="animation:spin 1s linear infinite">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
             </svg>
-            Menganalisis &amp; Menyimpan...`;
+            ${editId ? 'Memproses Pembaruan...' : 'Menganalisis &amp; Menyimpan...'}`;
 
         const mapping = {
             student_id: 'student-search-input',
@@ -530,29 +642,27 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         try {
-            const res = await fetch(`${API_URL}/assessments`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+            const url = editId ? `${API_URL}/assessments/${editId}` : `${API_URL}/assessments`;
+            const method = editId ? 'PUT' : 'POST';
+
+            const data = await apiRequest(url, {
+                method: method,
                 body: JSON.stringify(payload)
             });
-            const data = await res.json();
 
             if (data.success) {
-                showToast('success', 'Penilaian berhasil disimpan dan dianalisis!');
+                showToast('success', editId ? 'Penilaian berhasil diperbarui!' : 'Penilaian berhasil disimpan dan dianalisis!');
                 sessionStorage.setItem('latest_assessment_result', JSON.stringify(data.data));
                 window.location.href = `{{ route("penilaian.hasil") }}?student_id=${studentId}`;
-            } else {
-                showFormErrors(this, data, mapping);
-                showToast('error', data.message || 'Gagal memproses penilaian.');
-                resetSubmitBtn(submitBtn);
             }
         } catch (err) {
             console.error(err);
-            showFormErrors(this, { message: 'Terjadi kesalahan jaringan.' });
-            showToast('error', 'Terjadi kesalahan jaringan.');
+            if (err instanceof ApiError && err.payload) {
+                showFormErrors(this, err.payload, mapping);
+            } else {
+                showFormErrors(this, { message: err.message });
+            }
+            showToast('error', err.message || 'Gagal memproses penilaian.');
             resetSubmitBtn(submitBtn);
         }
     });
@@ -566,7 +676,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>
                 <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
             </svg>
-            Simpan &amp; Prediksi`;
+            ${editId ? 'Perbarui &amp; Prediksi' : 'Simpan &amp; Prediksi'}`;
+    }
+
+    // Auto-select student from URL query parameter or edit assessment on page load
+    if (editId) {
+        // Change title in form view to edit mode
+        document.querySelector('.page-header__title').textContent = 'Edit Penilaian';
+        loadAssessmentForEdit(editId);
+    } else if (queryStudentId) {
+        loadStudents();
     }
 
 });
