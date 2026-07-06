@@ -14,38 +14,36 @@ if 'typing_extensions' in sys.modules:
 # Tambahkan direktori root proyek ke path Python agar modul 'app' dapat ditemukan
 sys.path.append(base_dir)
 
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
-from app import app
-from app.database.connection import get_db, Base
-from app.models.db_models import User, Student, Assessment, Prediction
-from app.services.ml_service import MLService
 
 # --- SETUP DATABASE UJI COBA (SQLite File Fisik Sementara) ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test_temp.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Override SessionLocal di connection module SEBELUM app diimport agar router meload yang baru
+import app.database.connection
+app.database.connection.set_session_maker(TestingSessionLocal)
+
+from app.database.connection import Base
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Baru import app setelah database dioverride
+import app
+app_instance = app.app
+from app.models.db_models import User, Student, Assessment, Prediction
+from app.services.ml_service import MLService
 
-app.dependency_overrides[get_db] = override_get_db
-client = TestClient(app)
-
+# Gunakan Flask test client
+client = app_instance.test_client()
 
 def test_workflow():
     print("\n[TEST] 1. Pengujian Healthcheck Root API...")
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json()["status"] == "Running"
+    assert response.get_json()["status"] == "Running"
     print("-> Sukses!")
 
     print("\n[TEST] 2. Registrasi Guru (User) Baru...")
@@ -55,8 +53,11 @@ def test_workflow():
         "password": "secretpassword123"
     }
     response = client.post("/api/auth/register", json=reg_data)
+    if response.status_code != 201:
+        print("REGISTRATION FAILED. Status Code:", response.status_code)
+        print("Response Body:", response.get_data(as_text=True))
     assert response.status_code == 201
-    res = response.json()
+    res = response.get_json()
     assert res["success"] is True
     assert res["data"]["username"] == "budislb"
     print("-> Sukses! Terbungkus ApiResponse.")
@@ -65,7 +66,7 @@ def test_workflow():
     login_data = {"username": "budislb", "password": "secretpassword123"}
     response = client.post("/api/auth/login", json=login_data)
     assert response.status_code == 200
-    res = response.json()
+    res = response.get_json()
     assert res["success"] is True
     token = res["data"]["access_token"]
     refresh_token = res["data"]["refresh_token"]
@@ -76,7 +77,7 @@ def test_workflow():
     print("\n[TEST] 3.1. Uji Refresh Token...")
     refresh_resp = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
     assert refresh_resp.status_code == 200
-    ref_res = refresh_resp.json()
+    ref_res = refresh_resp.get_json()
     assert ref_res["success"] is True
     new_token = ref_res["data"]["access_token"]
     new_refresh = ref_res["data"]["refresh_token"]
@@ -97,7 +98,7 @@ def test_workflow():
     }
     response = client.post("/api/students", json=student_data, headers=headers)
     assert response.status_code == 201
-    res = response.json()
+    res = response.get_json()
     assert res["success"] is True
     student_id = res["data"]["id"]
     assert student_id is not None
@@ -143,7 +144,7 @@ def test_workflow():
     }
     response = client.post("/api/assessments", json=assessment_data, headers=headers)
     assert response.status_code == 201
-    res = response.json()
+    res = response.get_json()
     assert res["success"] is True
     res_data = res["data"]
 
@@ -178,7 +179,7 @@ def test_workflow():
     print("\n[TEST] 6. Mengambil Riwayat Penilaian Siswa dari Database...")
     history_resp = client.get(f"/api/assessments/student/{student_id}", headers=headers)
     assert history_resp.status_code == 200
-    res = history_resp.json()
+    res = history_resp.get_json()
     assert res["success"] is True
     assert len(res["data"]) == 1
     assert res["data"][0]["mat_score"] == 85.0
@@ -188,7 +189,7 @@ def test_workflow():
     update_data = {"full_name": "Deni Siswa SLB Diperbarui", "class_level": "5"}
     up_resp = client.put(f"/api/students/{student_id}", json=update_data, headers=headers)
     assert up_resp.status_code == 200
-    res = up_resp.json()
+    res = up_resp.get_json()
     assert res["success"] is True
     assert res["data"]["full_name"] == "Deni Siswa SLB Diperbarui"
     print("-> Sukses!")
@@ -205,7 +206,7 @@ def test_workflow():
     }
     err_resp = client.post("/api/students", json=bad_student_data, headers=headers)
     assert err_resp.status_code == 422
-    res = err_resp.json()
+    res = err_resp.get_json()
     assert res["success"] is False
     assert res["error_code"] == "VALIDATION_ERROR"
     assert len(res["details"]) > 0
@@ -214,11 +215,11 @@ def test_workflow():
     print("\n[TEST] 9. Menghapus Data Siswa (Delete Student - Cascade Delete)...")
     del_std_resp = client.delete(f"/api/students/{student_id}", headers=headers)
     assert del_std_resp.status_code == 200
-    assert del_std_resp.json()["success"] is True
+    assert del_std_resp.get_json()["success"] is True
 
     final_chk_resp = client.get(f"/api/assessments/student/{student_id}", headers=headers)
     assert final_chk_resp.status_code == 404
-    res = final_chk_resp.json()
+    res = final_chk_resp.get_json()
     assert res["success"] is False
     assert res["error_code"] == "HTTP_404"
     print("-> Sukses! Seluruh data transaksi penilaian siswa terhapus bersih secara cascade.")
@@ -233,8 +234,12 @@ if __name__ == "__main__":
         print("===========================================")
     except AssertionError as e:
         print(f"\n[FAILED] TEST GAGAL: Terjadi AssertionError {str(e)}")
+        import traceback
+        traceback.print_exc()
     except Exception as e:
         print(f"\n[ERROR] TEST EROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
     finally:
         engine.dispose()
         if os.path.exists("./test_temp.db"):

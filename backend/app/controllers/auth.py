@@ -1,13 +1,10 @@
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status, Depends
-from fastapi.security import OAuth2PasswordBearer
+from app.utils.exceptions import HTTPException, status
 from app.models.db_models import User
 from app.schemas.auth import UserCreate, UserLogin, Token, UserResponse
 from app.repositories.user import UserRepository
 from app.services.auth import AuthService
-from app.database.connection import get_db
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login-oauth2")
 
 class AuthController:
     @staticmethod
@@ -69,7 +66,7 @@ class AuthController:
         return Token(access_token=new_access_token, token_type="bearer", refresh_token=new_refresh_token)
 
     @staticmethod
-    def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+    def get_current_user(token: str, db: Session) -> User:
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token autentikasi tidak valid atau kadaluarsa",

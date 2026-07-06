@@ -1,162 +1,106 @@
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
-from app.database.connection import get_db
-from app.models.db_models import User
+from flask_openapi3 import APIBlueprint, Tag
+from flask import g
+from pydantic import BaseModel, Field
 from app.schemas.base_response import ApiResponse
 from app.schemas.assessment import (
     StudentCreate, StudentResponse, StudentUpdate,
     AssessmentCreate, AssessmentResponse
 )
 from app.controllers.assessment import AssessmentController
-from app.controllers.auth import AuthController
-from typing import List
+from app.middleware.auth_middleware import require_auth
 
-router = APIRouter(prefix="/api", tags=["Assessments & Students"])
+tag_assessment = Tag(name="Assessments & Students", description="Assessments and Students management endpoints")
+assessment_bp = APIBlueprint("assessment", __name__, url_prefix="/api", abp_tags=[tag_assessment])
+
+# --- PATH PARAMETER MODELS FOR SWAGGER ---
+class StudentPath(BaseModel):
+    student_id: int = Field(..., description="ID Siswa")
+
+class AssessmentPath(BaseModel):
+    assessment_id: int = Field(..., description="ID Sesi Penilaian")
 
 # --- ENDPOINTS DATA SISWA (STUDENTS) ---
 
-@router.post("/students", response_model=ApiResponse[StudentResponse], status_code=status.HTTP_201_CREATED)
-def create_student(
-    student: StudentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.post("/students", security=[{"BearerAuth": []}], responses={"201": ApiResponse})
+@require_auth
+def create_student(body: StudentCreate):
     """Menambahkan data siswa baru (memerlukan login)."""
-    new_student = AssessmentController.create_student(db, student)
-    return ApiResponse(
-        success=True,
-        message="Data siswa berhasil ditambahkan",
-        data=new_student
-    )
+    new_student = AssessmentController.create_student(g.db, body)
+    data = StudentResponse.model_validate(new_student).model_dump(mode='json')
+    return {"success": True, "message": "Data siswa berhasil ditambahkan", "data": data}, 201
 
-@router.get("/students", response_model=ApiResponse[List[StudentResponse]])
-def get_students(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.get("/students", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def get_students():
     """Mengambil semua daftar siswa."""
-    students = AssessmentController.get_all_students(db)
-    return ApiResponse(
-        success=True,
-        message="Daftar seluruh siswa berhasil diambil",
-        data=students
-    )
+    students = AssessmentController.get_all_students(g.db)
+    data = [StudentResponse.model_validate(s).model_dump(mode='json') for s in students]
+    return {"success": True, "message": "Daftar seluruh siswa berhasil diambil", "data": data}, 200
 
-@router.put("/students/{student_id}", response_model=ApiResponse[StudentResponse])
-def update_student(
-    student_id: int,
-    student: StudentUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.put("/students/<int:student_id>", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def update_student(path: StudentPath, body: StudentUpdate):
     """Mengubah data profil siswa berdasarkan ID."""
-    updated = AssessmentController.update_student(db, student_id, student)
-    return ApiResponse(
-        success=True,
-        message=f"Profil siswa dengan ID {student_id} berhasil diperbarui",
-        data=updated
-    )
+    updated = AssessmentController.update_student(g.db, path.student_id, body)
+    data = StudentResponse.model_validate(updated).model_dump(mode='json')
+    return {"success": True, "message": f"Profil siswa dengan ID {path.student_id} berhasil diperbarui", "data": data}, 200
 
-@router.delete("/students/{student_id}", response_model=ApiResponse[None])
-def delete_student(
-    student_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.delete("/students/<int:student_id>", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def delete_student(path: StudentPath):
     """Menghapus data siswa dan seluruh riwayat penilaian terkait (cascade delete)."""
-    AssessmentController.delete_student(db, student_id)
-    return ApiResponse(
-        success=True,
-        message=f"Data siswa dengan ID {student_id} beserta seluruh riwayat penilaian berhasil dihapus",
-        data=None
-    )
+    AssessmentController.delete_student(g.db, path.student_id)
+    return {"success": True, "message": f"Data siswa dengan ID {path.student_id} beserta seluruh riwayat penilaian berhasil dihapus", "data": None}, 200
 
 
 # --- ENDPOINTS TRANSAKSI PENILAIAN & PREDIKSI ML ---
 
-@router.post("/assessments", response_model=ApiResponse[AssessmentResponse], status_code=status.HTTP_201_CREATED)
-def create_assessment(
-    assessment: AssessmentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.post("/assessments", security=[{"BearerAuth": []}], responses={"201": ApiResponse})
+@require_auth
+def create_assessment(body: AssessmentCreate):
     """
     Menyimpan sesi penilaian baru dengan semua nilai dan deskripsi mapel/aspek,
     lalu memicu prediksi Machine Learning (Random Forest + SHAP).
     """
-    new_assessment = AssessmentController.create_assessment(db, assessment, current_user)
-    return ApiResponse(
-        success=True,
-        message="Sesi penilaian dan prediksi capaian perkembangan siswa berhasil diproses dan disimpan",
-        data=new_assessment
-    )
+    new_assessment = AssessmentController.create_assessment(g.db, body, g.current_user)
+    data = AssessmentResponse.model_validate(new_assessment).model_dump(mode='json')
+    return {"success": True, "message": "Sesi penilaian dan prediksi capaian perkembangan siswa berhasil diproses dan disimpan", "data": data}, 201
 
-@router.get("/assessments", response_model=ApiResponse[List[AssessmentResponse]])
-def get_assessments(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.get("/assessments", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def get_assessments():
     """Mengambil semua daftar penilaian yang tercatat."""
-    assessments = AssessmentController.get_all_assessments(db)
-    return ApiResponse(
-        success=True,
-        message="Seluruh riwayat transaksi penilaian berhasil diambil",
-        data=assessments
-    )
+    assessments = AssessmentController.get_all_assessments(g.db)
+    data = [AssessmentResponse.model_validate(a).model_dump(mode='json') for a in assessments]
+    return {"success": True, "message": "Seluruh riwayat transaksi penilaian berhasil diambil", "data": data}, 200
 
-@router.get("/assessments/student/{student_id}", response_model=ApiResponse[List[AssessmentResponse]])
-def get_assessments_by_student(
-    student_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.get("/assessments/student/<int:student_id>", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def get_assessments_by_student(path: StudentPath):
     """Mengambil riwayat penilaian untuk siswa tertentu berdasarkan ID."""
-    assessments = AssessmentController.get_assessments_by_student(db, student_id)
-    return ApiResponse(
-        success=True,
-        message=f"Riwayat penilaian untuk siswa ID {student_id} berhasil diambil",
-        data=assessments
-    )
+    assessments = AssessmentController.get_assessments_by_student(g.db, path.student_id)
+    data = [AssessmentResponse.model_validate(a).model_dump(mode='json') for a in assessments]
+    return {"success": True, "message": f"Riwayat penilaian untuk siswa ID {path.student_id} berhasil diambil", "data": data}, 200
 
-@router.get("/assessments/{assessment_id}", response_model=ApiResponse[AssessmentResponse])
-def get_assessment(
-    assessment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.get("/assessments/<int:assessment_id>", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def get_assessment(path: AssessmentPath):
     """Mengambil detail penilaian berdasarkan ID."""
-    assessment = AssessmentController.get_assessment_by_id(db, assessment_id)
-    return ApiResponse(
-        success=True,
-        message=f"Detail penilaian dengan ID {assessment_id} berhasil diambil",
-        data=assessment
-    )
+    assessment = AssessmentController.get_assessment_by_id(g.db, path.assessment_id)
+    data = AssessmentResponse.model_validate(assessment).model_dump(mode='json')
+    return {"success": True, "message": f"Detail penilaian dengan ID {path.assessment_id} berhasil diambil", "data": data}, 200
 
-@router.put("/assessments/{assessment_id}", response_model=ApiResponse[AssessmentResponse])
-def update_assessment(
-    assessment_id: int,
-    assessment: AssessmentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.put("/assessments/<int:assessment_id>", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def update_assessment(path: AssessmentPath, body: AssessmentCreate):
     """Mengubah data penilaian berdasarkan ID dan memperbarui prediksi."""
-    updated = AssessmentController.update_assessment(db, assessment_id, assessment)
-    return ApiResponse(
-        success=True,
-        message=f"Penilaian dengan ID {assessment_id} berhasil diperbarui",
-        data=updated
-    )
+    updated = AssessmentController.update_assessment(g.db, path.assessment_id, body)
+    data = AssessmentResponse.model_validate(updated).model_dump(mode='json')
+    return {"success": True, "message": f"Penilaian dengan ID {path.assessment_id} berhasil diperbarui", "data": data}, 200
 
-@router.delete("/assessments/{assessment_id}", response_model=ApiResponse[None])
-def delete_assessment(
-    assessment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthController.get_current_user)
-):
+@assessment_bp.delete("/assessments/<int:assessment_id>", security=[{"BearerAuth": []}], responses={"200": ApiResponse})
+@require_auth
+def delete_assessment(path: AssessmentPath):
     """Menghapus data penilaian berdasarkan ID."""
-    AssessmentController.delete_assessment(db, assessment_id)
-    return ApiResponse(
-        success=True,
-        message=f"Penilaian dengan ID {assessment_id} berhasil dihapus",
-        data=None
-    )
+    AssessmentController.delete_assessment(g.db, path.assessment_id)
+    return {"success": True, "message": f"Penilaian dengan ID {path.assessment_id} berhasil dihapus", "data": None}, 200

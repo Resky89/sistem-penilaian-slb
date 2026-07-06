@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from app.utils.exceptions import HTTPException, status
 from app.models.db_models import Student, Assessment, User
 from app.schemas.assessment import (
     StudentCreate, StudentResponse, StudentUpdate,

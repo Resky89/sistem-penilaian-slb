@@ -33,6 +33,15 @@ engine = create_engine(
 # Pembuat session database
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+_session_maker = SessionLocal
+
+def set_session_maker(maker):
+    global _session_maker
+    _session_maker = maker
+
+def get_session():
+    return _session_maker()
+
 # Base class untuk Model ORM
 Base = declarative_base()
 

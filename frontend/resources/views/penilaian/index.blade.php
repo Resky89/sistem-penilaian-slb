@@ -117,12 +117,14 @@
                 `;
             }
 
-            // Always add a button to perform a new assessment
-            actionButtons += `
-                <a href="${'{{ route("penilaian.form") }}'}?student_id=${student.id}" class="btn btn--ghost" title="Input Penilaian Baru" style="padding: 0.5rem; color: var(--color-primary);">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-                </a>
-            `;
+            // Add a button to perform a new assessment only if student has not been assessed yet
+            if (!latestAssessment) {
+                actionButtons += `
+                    <a href="${'{{ route("penilaian.form") }}'}?student_id=${student.id}" class="btn btn--ghost" title="Input Penilaian Baru" style="padding: 0.5rem; color: var(--color-primary);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                    </a>
+                `;
+            }
 
             const tr = document.createElement('tr');
             tr.innerHTML = `

@@ -430,9 +430,19 @@ document.addEventListener('DOMContentLoaded', function () {
         openDropdown();
 
         try {
-            const data = await apiRequest(`${API_URL}/students`);
-            if (data.success) {
-                allStudents = data.data;
+            const [studentsData, assessmentsData] = await Promise.all([
+                apiRequest(`${API_URL}/students`),
+                apiRequest(`${API_URL}/assessments`)
+            ]);
+
+            if (studentsData.success && assessmentsData.success) {
+                const assessedStudentIds = new Set(assessmentsData.data.map(a => a.student_id));
+                
+                // Filter out students who have already been assessed
+                allStudents = studentsData.data.filter(s => {
+                    if (queryStudentId && String(s.id) === queryStudentId) return true;
+                    return !assessedStudentIds.has(s.id);
+                });
 
                 // Auto-select if query param student_id exists
                 if (queryStudentId) {
@@ -450,8 +460,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // --- Load assessment data for editing ---
     async function loadAssessmentForEdit(id) {
-        showToast('info', 'Memuat data penilaian lama...');
-        
         try {
             // Load students list first for selection matching
             const dataS = await apiRequest(`${API_URL}/students`);
@@ -497,8 +505,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     const descEl = document.getElementById(`desc-${field}`);
                     if (descEl && descVal !== null) descEl.value = descVal;
                 });
-
-                showToast('success', 'Data penilaian lama berhasil dimuat.');
             }
         } catch (err) {
             console.error(err);
