@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <script>
-        const API_URL = "http://localhost:8001/api";
+        const API_URL = "{{ config('services.api.url') }}";
 
         function clearFormErrors(form) {
             if (typeof form === 'string') {
