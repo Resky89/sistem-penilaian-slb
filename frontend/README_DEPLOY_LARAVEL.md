@@ -1,6 +1,16 @@
 # Panduan Deployment Frontend Laravel ke cPanel (ArenHost)
 
-Panduan ini menjelaskan langkah demi langkah untuk melakukan deploy aplikasi frontend **Laravel 10/11** ke cPanel shared hosting Anda pada subdomain **`https://sipaca-slb.reskyprabowo.biz.id/`**.
+Panduan ini menjelaskan langkah demi langkah untuk melakukan deploy aplikasi frontend **Laravel** Anda ke cPanel shared hosting pada subdomain **`https://sipaca-slb.reskyprabowo.biz.id/`**.
+
+---
+
+## 🔍 Hasil Analisis Proyek Frontend Anda
+
+Berdasarkan pemeriksaan struktur berkas proyek Anda:
+1. **Tidak Memerlukan Database:** Proyek frontend ini murni berupa tampilan statis (Blade views) yang berkomunikasi secara langsung ke Flask backend API menggunakan pemanggilan Javascript `fetch()` dari browser. Laravel di sisi server tidak mengoperasikan database sama sekali.
+2. **Tidak Memerlukan Node.js di Server:** File stylesheet CSS Tailwind Anda sudah ter-compile secara lokal di dalam folder `public/css/app.css` (dimuat via `asset('css/app.css')` pada layout utama). Anda **tidak perlu menginstal Node.js / menjalankan `npm run build`** di server produksi cPanel Anda.
+
+Dengan demikian, proses deployment menjadi jauh lebih ringan dan cepat!
 
 ---
 
@@ -36,7 +46,7 @@ Panduan ini menjelaskan langkah demi langkah untuk melakukan deploy aplikasi fro
 ## ⚙️ Langkah 3: Konfigurasi Environment File (`.env`)
 
 1. Melalui **File Manager** cPanel di folder `/home/reskypra/sipaca-slb.reskyprabowo.biz.id/`, buat file baru bernama **`.env`** (atau salin dari `.env.example` lalu ubah namanya).
-2. Edit file `.env` tersebut dan isikan konfigurasi produksi berikut:
+2. Edit file `.env` tersebut dan cukup isikan konfigurasi sederhana berikut (karena Anda tidak menggunakan database di frontend):
 
    ```env
    APP_NAME="SIPACA SLB"
@@ -46,14 +56,6 @@ Panduan ini menjelaskan langkah demi langkah untuk melakukan deploy aplikasi fro
 
    LOG_CHANNEL=stack
    LOG_LEVEL=error
-
-   # Koneksi Database MySQL (Sama seperti backend)
-   DB_CONNECTION=mysql
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_DATABASE=reskypra_db_penilaian_slb
-   DB_USERNAME=reskypra_db_user
-   DB_PASSWORD=********  # Password user database MySQL cPanel Anda
 
    # URL Endpoint Backend API Flask
    # (Pastikan mengarah ke URL subdomain API Anda yang aktif)
@@ -72,17 +74,20 @@ Panduan ini menjelaskan langkah demi langkah untuk melakukan deploy aplikasi fro
    ```bash
    cd /home/reskypra/sipaca-slb.reskyprabowo.biz.id
    ```
-3. **Instal Library PHP (Composer):**
-   Jalankan perintah berikut untuk menginstal semua package PHP di server tanpa dev-dependency dan dengan optimalisasi pemuatan kelas:
-   ```bash
-   composer install --no-dev --optimize-autoloader
-   ```
-4. **Instal & Build Assets Frontend (Vite/NodeJS):**
-   Jalankan perintah berikut untuk meng-compile file asset CSS/Javascript (seperti Tailwind CSS) ke bentuk siap produksi:
-   ```bash
-   npm install
-   npm run build
-   ```
+3. **PENTING: Sesuaikan Versi PHP di cPanel:**
+   Sebelum menginstal package PHP, pastikan Anda sudah mengatur versi PHP aktif di cPanel Anda ke **PHP 8.2 atau 8.3**:
+   * Buka menu **Select PHP Version** (atau **PHP Selector**) di cPanel.
+   * Pilih **8.2** atau **8.3** dari dropdown menu, lalu klik **Set as current** (Terapkan sebagai default).
+
+4. **Instal Library PHP (Composer):**
+    Jalankan perintah standard berikut untuk mengunduh semua library PHP:
+    ```bash
+    composer install --no-dev --optimize-autoloader
+    ```
+
+    > [!TIP]
+    > **Catatan jika versi PHP di terminal belum ter-refresh:**
+    > Jika setelah mengubah versi PHP ke 8.2 Anda masih mendapati error mismatch versi, silakan tutup terminal cPanel Anda dan buka kembali (atau jalankan perintah `hash -r` di terminal) untuk me-refresh session path PHP yang baru. Jika tetap kesulitan, Anda bisa menambahkan flag pengabaian: `composer install --ignore-platform-reqs --no-dev --optimize-autoloader`.
 
 ---
 
@@ -119,8 +124,8 @@ chmod -R 775 storage bootstrap/cache
 
 1. Buka browser dan akses domain frontend Anda:
    👉 **`https://sipaca-slb.reskyprabowo.biz.id/`**
-2. Coba lakukan navigasi halaman, uji fungsi login, dan penambahan data untuk memastikan frontend Laravel berkomunikasi dengan mulus ke API Flask di subdomain `https://slb.reskyprabowo.biz.id/`.
-3. Jika terjadi halaman putih/blank atau error 500 pada Laravel, Anda bisa memeriksa file log di:
+2. Uji fungsi login, registrasi, dan penambahan data untuk memastikan frontend Laravel berkomunikasi dengan mulus ke API Flask di subdomain `https://slb.reskyprabowo.biz.id/`.
+3. Jika terjadi masalah, Anda bisa memeriksa file log di:
    ```text
    /home/reskypra/sipaca-slb.reskyprabowo.biz.id/storage/logs/laravel.log
    ```
