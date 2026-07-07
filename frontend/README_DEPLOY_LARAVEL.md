@@ -21,11 +21,10 @@ Dengan demikian, proses deployment menjadi jauh lebih ringan dan cepat!
 3. Buat subdomain baru:
    * **Subdomain:** `sipaca-slb`
    * **Domain:** `reskyprabowo.biz.id`
-4. **PENTING (Dokumen Root):** Arahkan **Document Root** subdomain tersebut langsung ke folder **`public`** dari proyek Laravel Anda:
+4. **Document Root:** Biarkan mengarah ke folder induk proyek Anda (default cPanel):
    ```text
-   /home/reskypra/sipaca-slb.reskyprabowo.biz.id/public
+   /home/reskypra/sipaca-slb.reskyprabowo.biz.id
    ```
-   *(Sistem keamanan Laravel mengharuskan web server melayani traffic dari folder `public` saja untuk menyembunyikan file kode program inti).*
 
 ---
 
@@ -40,6 +39,23 @@ Dengan demikian, proses deployment menjadi jauh lebih ringan dan cepat!
    * Masuk ke folder `/home/reskypra/sipaca-slb.reskyprabowo.biz.id/`.
    * Upload file `frontend.zip` ke folder tersebut.
    * Ekstrak file ZIP tersebut langsung di tempat. Pastikan struktur file Anda (seperti `app/`, `public/`, `artisan`, dll.) berada langsung di dalam folder `/home/reskypra/sipaca-slb.reskyprabowo.biz.id/`.
+
+---
+
+## 🛠️ Langkah 2.5: Membuat Konfigurasi Redirect `.htaccess`
+
+Karena Document Root subdomain Anda mengarah ke folder induk (bukan ke `/public`), Anda harus mengalihkan traffic secara otomatis ke dalam folder `/public` lewat file `.htaccess` luar:
+
+1. Di **File Manager** cPanel, masuk ke folder utama `/home/reskypra/sipaca-slb.reskyprabowo.biz.id/`.
+2. Buat file baru bernama **`.htaccess`** (diawali dengan titik).
+3. Isi file `.htaccess` tersebut dengan kode berikut ini, lalu simpan:
+   ```apache
+   <IfModule mod_rewrite.c>
+       RewriteEngine On
+       # Alihkan seluruh request traffic ke dalam folder public secara diam-diam
+       RewriteRule ^(.*)$ public/$1 [L]
+   </IfModule>
+   ```
 
 ---
 
