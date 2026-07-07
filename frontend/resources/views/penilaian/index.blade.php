@@ -29,12 +29,59 @@
         </tr>
     </tbody>
 </x-table>
+
+{{-- Modal Hapus Penilaian --}}
+<x-modal id="modal-delete-assessment" title="Hapus Penilaian" size="sm">
+    <div class="text-center">
+        <div class="confirm-icon confirm-icon--danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        </div>
+        <p class="confirm-text">
+            Apakah Anda yakin ingin menghapus data penilaian terakhir untuk siswa
+            <strong id="delete-nama-siswa"></strong>?
+            Tindakan ini tidak dapat dibatalkan.
+        </p>
+    </div>
+
+    <x-slot name="footer">
+        <x-button type="secondary" onclick="closeModal('modal-delete-assessment')">Batal</x-button>
+        <x-button type="danger" onclick="submitDeleteAssessment()">Hapus</x-button>
+    </x-slot>
+</x-modal>
 @endsection
 
 @push('scripts')
 <script>
     let allStudents = [];
     let allAssessments = [];
+
+    // --- Modal Helpers ---
+    function openModal(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.add('modal-overlay--active');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    function closeModal(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.remove('modal-overlay--active');
+            document.body.style.overflow = '';
+        }
+    }
+
+    // Close modal on overlay click
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeModal(this.id);
+                }
+            });
+        });
+    });
 
     async function loadPenilaianData() {
         const token = localStorage.getItem('jwt_token');
@@ -111,7 +158,7 @@
 
                 // Button to delete
                 actionButtons += `
-                    <button onclick="confirmDeleteAssessment(${latestAssessment.id})" class="btn btn--ghost" title="Hapus Penilaian Terakhir" style="padding: 0.5rem; color: var(--color-danger);">
+                    <button onclick="confirmDeleteAssessment(${latestAssessment.id}, ${student.id})" class="btn btn--ghost" title="Hapus Penilaian Terakhir" style="padding: 0.5rem; color: var(--color-danger);">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
                     </button>
                 `;
@@ -158,20 +205,35 @@
         allStudents = originalAllStudents;
     });
 
-    async function confirmDeleteAssessment(id) {
-        if (!confirm('Apakah Anda yakin ingin menghapus data penilaian terakhir ini? Tindakan ini tidak dapat dibatalkan.')) {
-            return;
+    let currentDeleteAssessmentId = null;
+
+    function confirmDeleteAssessment(id, studentId) {
+        currentDeleteAssessmentId = id;
+        const student = allStudents.find(s => s.id === studentId);
+        const studentName = student ? student.full_name : '';
+        
+        const deleteNameEl = document.getElementById('delete-nama-siswa');
+        if (deleteNameEl) {
+            deleteNameEl.textContent = studentName;
         }
+        
+        openModal('modal-delete-assessment');
+    }
+
+    async function submitDeleteAssessment() {
+        if (!currentDeleteAssessmentId) return;
         
         const token = localStorage.getItem('jwt_token');
         try {
-            const res = await fetch(`${API_URL}/assessments/${id}`, {
+            const res = await fetch(`${API_URL}/assessments/${currentDeleteAssessmentId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
             const data = await res.json();
+            
+            closeModal('modal-delete-assessment');
             
             if (data.success) {
                 showToast('success', 'Penilaian berhasil dihapus!');
@@ -181,7 +243,10 @@
             }
         } catch (err) {
             console.error(err);
+            closeModal('modal-delete-assessment');
             showToast('error', 'Terjadi kesalahan jaringan.');
+        } finally {
+            currentDeleteAssessmentId = null;
         }
     }
 
