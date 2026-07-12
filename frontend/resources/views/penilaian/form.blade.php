@@ -11,7 +11,7 @@
     </a>
 </div>
 
-<form id="form-penilaian">
+<form id="form-penilaian" style="padding-bottom: 5rem;">
     @csrf
     <div class="alert-general" style="display: none; margin-bottom: 1.5rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); background-color: #fef2f2; border: 1px solid #fecaca; color: var(--color-danger); font-size: var(--font-size-sm); font-weight: 500;"></div>
 
@@ -84,22 +84,11 @@
             </select>
         </div>
 
-        {{-- Submit --}}
-        <div style="padding-top: 1.5rem;">
-            <button type="submit" class="btn btn--primary" style="height: 42px;" id="btn-submit">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
-                    <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>
-                    <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
-                </svg>
-                Simpan &amp; Prediksi
-            </button>
-        </div>
+
     </div>
 
     {{-- Tabs --}}
-    <div class="tabs" role="tablist" style="margin-top: 1.5rem;">
+    <div class="tabs tabs--sticky" role="tablist">
         <button type="button" class="tabs__item tabs__item--active" data-tab="akademik" role="tab" aria-selected="true">
             Akademik (Rapor)
         </button>
@@ -188,6 +177,29 @@
         @endforeach
     </div>
 
+    {{-- Sticky Bottom Action Bar --}}
+    <div class="form-actions-sticky">
+        <div class="form-actions-sticky__container">
+            <div class="form-actions-sticky__info">
+                <span class="form-actions-sticky__label">Menilai:</span>
+                <span class="form-actions-sticky__student" id="sticky-student-name">Pilih siswa...</span>
+            </div>
+            <div class="form-actions-sticky__buttons">
+                <a href="{{ route('penilaian.index') }}" class="btn btn--secondary">
+                    Batal
+                </a>
+                <button type="submit" class="btn btn--primary" style="height: 42px;" id="btn-submit">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
+                        <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>
+                        <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
+                    </svg>
+                    <span>Simpan &amp; Prediksi</span>
+                </button>
+            </div>
+        </div>
+    </div>
 </form>
 @endsection
 
@@ -392,6 +404,12 @@ document.addEventListener('DOMContentLoaded', function () {
         pill.classList.add('visible');
         clearBtn.classList.add('visible');
         closeDropdown();
+
+        // Update sticky bottom student label
+        const stickyStudentName = document.getElementById('sticky-student-name');
+        if (stickyStudentName) {
+            stickyStudentName.innerHTML = `<strong style="color: var(--color-primary);">${escapeHtml(student.full_name)}</strong> (${escapeHtml(student.student_number)}) · Kelas ${escapeHtml(student.class_level)}`;
+        }
     }
 
     // --- Clear selection ---
@@ -403,6 +421,12 @@ document.addEventListener('DOMContentLoaded', function () {
         clearBtn.classList.remove('visible');
         closeDropdown();
         searchInput.focus();
+
+        // Update sticky bottom student label
+        const stickyStudentName = document.getElementById('sticky-student-name');
+        if (stickyStudentName) {
+            stickyStudentName.textContent = 'Pilih siswa...';
+        }
     }
 
     // --- Keyboard navigation ---

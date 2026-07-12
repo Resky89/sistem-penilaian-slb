@@ -47,6 +47,7 @@ class MLService:
     _model = None
     _tfidf = None
     _encoders = None
+    _ohe = None
     _explainer_label = None
 
     @classmethod
@@ -59,9 +60,10 @@ class MLService:
             cls._model = joblib.load(os.path.join(model_dir, "slb_model.joblib"))
             cls._tfidf = joblib.load(os.path.join(model_dir, "tfidf_vectorizer.joblib"))
             cls._encoders = joblib.load(os.path.join(model_dir, "label_encoders.joblib"))
+            cls._ohe = joblib.load(os.path.join(model_dir, "onehot_encoder.joblib"))
             
-            # Inisialisasi SHAP Explainer untuk target 'Label' (estimator indeks 1 di MultiOutputClassifier)
-            cls._explainer_label = shap.TreeExplainer(cls._model.estimators_[1])
+            # Inisialisasi SHAP Explainer untuk target tunggal (Status Perkembangan)
+            cls._explainer_label = shap.TreeExplainer(cls._model)
             print("=== Model Machine Learning & SHAP Explainer Berhasil Dimuat ===")
 
     @classmethod
@@ -78,7 +80,7 @@ class MLService:
         return " ".join(words)
 
     @classmethod
-    def predict_subject(cls, score: float, text: str) -> Dict[str, Any]:
+    def predict_subject(cls, score: float, text: str, subject_name: str) -> Dict[str, Any]:
         """
         Melakukan prediksi status perkembangan (Label) dan penjelasan SHAP
         untuk satu mapel/aspek tertentu.
@@ -86,18 +88,40 @@ class MLService:
         cls.load_models()
         cleaned_text = cls.clean_text(text)
         X_tfidf = cls._tfidf.transform([cleaned_text]).toarray()
+        
+        # OHE aspect
+        X_aspek = cls._ohe.transform(pd.DataFrame([[subject_name]], columns=['Aspek / Mapel']))
+        
         X_nilai = np.array([[float(score)]])
-        X_combined = np.hstack([X_nilai, X_tfidf])
+        X_combined = np.hstack([X_nilai, X_tfidf, X_aspek])
 
-        # Predict (MultiOutput Classifier)
+        # Predict (Single-Output Classifier)
         preds = cls._model.predict(X_combined)
-        pred_label_idx = int(preds[0][1])
+        pred_label_idx = int(preds[0])
         decoded_label = cls._encoders['le_label'].inverse_transform([pred_label_idx])[0]
+
+        # Post-processing heuristics to handle class imbalance biases & unseen high scores
+        lower_desc = text.lower() if isinstance(text, str) else ""
+        has_positive_keywords = "sangat baik" in lower_desc or ("sangat" in lower_desc and "baik" in lower_desc)
+        has_negative_keywords = any(w in lower_desc for w in ["kurang", "belum", "perlu bimbingan", "kesulitan", "lambat", "hambatan"])
+        
+        is_excellent_academic = score >= 85.0
+        portfolio_subjects = ["Ekskul Pramuka", "Konsentrasi", "Motorik", "Interaksi dan Komunikasi", "Emosi", "Bina Diri", "Membaca", "Menulis", "Berhitung"]
+        is_portfolio = subject_name in portfolio_subjects
+        
+        if (is_excellent_academic or is_portfolio) and has_positive_keywords and not has_negative_keywords:
+            decoded_label = "Baik"
+            try:
+                classes_list = list(cls._encoders['le_label'].classes_)
+                if "Baik" in classes_list:
+                    pred_label_idx = classes_list.index("Baik")
+            except Exception:
+                pass
 
         # Probability score
         prob_score = 0.0
         try:
-            probs = cls._model.estimators_[1].predict_proba(X_combined)
+            probs = cls._model.predict_proba(X_combined)
             prob_score = float(probs[0][pred_label_idx])
         except Exception:
             pass
@@ -107,12 +131,16 @@ class MLService:
         shap_values = []
         try:
             shap_vals = cls._explainer_label.shap_values(X_combined)
-            feature_names = ["Nilai"] + list(cls._tfidf.get_feature_names_out())
+            aspek_cols = [f'aspek_{a}' for a in cls._ohe.categories_[0]]
+            feature_names = ["Nilai"] + list(cls._tfidf.get_feature_names_out()) + aspek_cols
 
-            if isinstance(shap_vals, np.ndarray) and len(shap_vals.shape) == 3:
-                class_shap_vals = shap_vals[0, :, pred_label_idx]
-            elif isinstance(shap_vals, list):
+            if isinstance(shap_vals, list):
                 class_shap_vals = shap_vals[pred_label_idx][0]
+            elif isinstance(shap_vals, np.ndarray):
+                if len(shap_vals.shape) == 3:
+                    class_shap_vals = shap_vals[0, :, pred_label_idx]
+                elif len(shap_vals.shape) == 2:
+                    class_shap_vals = shap_vals[0]
             else:
                 class_shap_vals = shap_vals[0]
 
@@ -170,7 +198,7 @@ class MLService:
 
             if has_data:
                 # Run prediction
-                res = cls.predict_subject(score, desc if desc else "")
+                res = cls.predict_subject(score, desc if desc else "", display_name)
                 
                 predictions_list.append({
                     "subject": display_name,
