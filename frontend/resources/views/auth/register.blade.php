@@ -51,8 +51,10 @@
             });
             const data = await res.json();
             if (data.success) {
-                alert('Registrasi berhasil! Silakan masuk dengan akun baru Anda.');
-                window.location.href = '{{ route("login") }}';
+                showToast('success', 'Registrasi berhasil! Silakan masuk dengan akun baru Anda.');
+                setTimeout(function() {
+                    window.location.href = '{{ route("login") }}';
+                }, 2000);
             } else {
                 showFormErrors(this, data, { 'full_name': 'nama_lengkap' });
                 button.disabled = false;

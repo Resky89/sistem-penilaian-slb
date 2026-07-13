@@ -52,10 +52,6 @@
             <select id="create-disabilitas" name="create-disabilitas" class="form-select" required>
                 <option value="" disabled selected>Pilih ketunaan</option>
                 <option value="Tunagrahita">Tunagrahita</option>
-                <option value="Tunarungu">Tunarungu</option>
-                <option value="Tunanetra">Tunanetra</option>
-                <option value="Tunadaksa">Tunadaksa</option>
-                <option value="Tunalaras">Tunalaras</option>
                 <option value="Autisme">Autisme</option>
             </select>
             <div class="invalid-feedback" id="error-create-disabilitas" style="display: none; font-size: 0.8rem; color: var(--color-danger); margin-top: 4px; font-weight: 500;"></div>
@@ -92,10 +88,6 @@
             <select id="edit-disabilitas" name="edit-disabilitas" class="form-select" required>
                 <option value="" disabled>Pilih ketunaan</option>
                 <option value="Tunagrahita">Tunagrahita</option>
-                <option value="Tunarungu">Tunarungu</option>
-                <option value="Tunanetra">Tunanetra</option>
-                <option value="Tunadaksa">Tunadaksa</option>
-                <option value="Tunalaras">Tunalaras</option>
                 <option value="Autisme">Autisme</option>
             </select>
             <div class="invalid-feedback" id="error-edit-disabilitas" style="display: none; font-size: 0.8rem; color: var(--color-danger); margin-top: 4px; font-weight: 500;"></div>

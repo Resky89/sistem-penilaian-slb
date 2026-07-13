@@ -301,7 +301,7 @@
             return `
             <div style="margin-top: 0.75rem; border-top: 1px dashed #e2e8f0; padding-top: 0.75rem;">
                 <!-- Narasi Penjelasan untuk Guru -->
-                <div style="background-color: #f8fafc; border-left: 4px solid var(--color-primary); padding: 0.75rem 1rem; border-radius: var(--radius-sm); font-size: 13px; color: var(--color-text); margin-bottom: 0.75rem; line-height: 1.6; box-shadow: var(--shadow-sm);">
+                <div style="background-color: #f8fafc; border-left: 4px solid var(--color-primary); padding: 0.75rem 1rem; border-radius: var(--radius-sm); font-size: 13px; color: var(--color-text); margin-bottom: 0.75rem; line-height: 1.6; box-shadow: var(--shadow-sm); text-align: justify;">
                     <div style="font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--color-primary); margin-bottom: 0.375rem; display: flex; align-items: center; gap: 0.375rem;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                         Analisis Guru (Penjelasan Model AI)
@@ -352,7 +352,7 @@
                     <td style="text-align: center; font-weight: 700; vertical-align: top; padding-top: 0.875rem;">${p.score !== null && p.score !== undefined ? p.score : '-'}</td>
                     <td style="text-align: center; vertical-align: top; padding-top: 0.875rem;">${getStatusBadge(p.status)}</td>
                     <td style="padding-bottom: 1rem;">
-                        <div style="color: var(--color-text); line-height: 1.5; font-size: var(--font-size-sm); background: #f8fafc; padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0;">
+                        <div style="color: var(--color-text); line-height: 1.5; font-size: var(--font-size-sm); background: #f8fafc; padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0; text-align: justify;">
                             ${escapeHtml(p.desc || '-')}
                         </div>
                         ${renderXaiSection(p.status, p.score !== null && p.score !== undefined ? p.score : '-', p.shap, p.desc)}
@@ -390,7 +390,7 @@
                         <h4 style="font-weight: 700; color: var(--color-text); margin: 0;">${escapeHtml(p.subject)}</h4>
                         ${getStatusBadge(p.status)}
                     </div>
-                    <p style="color: var(--color-text-secondary); line-height: 1.6; font-size: var(--font-size-sm); background: #ffffff; padding: 0.875rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0; margin-bottom: 0.5rem;">
+                    <p style="color: var(--color-text-secondary); line-height: 1.6; font-size: var(--font-size-sm); background: #ffffff; padding: 0.875rem; border-radius: var(--radius-sm); border: 1px solid #e2e8f0; margin-bottom: 0.5rem; text-align: justify;">
                         ${escapeHtml(p.desc)}
                     </p>
                     ${renderXaiSection(p.status, '-', p.shap, p.desc)}
