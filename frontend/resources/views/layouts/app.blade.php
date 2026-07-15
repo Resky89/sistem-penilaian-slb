@@ -184,7 +184,16 @@
 <body>
     {{-- Top Bar --}}
     <header class="topbar">
-        <span class="topbar__brand">SIPACA-SLB</span>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button type="button" class="topbar__menu-btn" id="btn-toggle-sidebar" aria-label="Toggle Menu">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" x2="20" y1="12" y2="12"/>
+                    <line x1="4" x2="20" y1="6" y2="6"/>
+                    <line x1="4" x2="20" y1="18" y2="18"/>
+                </svg>
+            </button>
+            <span class="topbar__brand">SIPACA-SLB</span>
+        </div>
         <div class="topbar__user">
             <span id="user-display-name">Guru SLB</span>
             <div class="topbar__avatar" id="user-display-avatar">G</div>
@@ -223,6 +232,9 @@
             </a>
         </div>
     </aside>
+
+    {{-- Sidebar Mobile Backdrop --}}
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     {{-- Main Content --}}
     <main class="main-content fade-in">
@@ -282,6 +294,23 @@
 
         // Tampilkan info user aktif dan kelola logout
         document.addEventListener('DOMContentLoaded', function() {
+            // Mobile Sidebar Toggle
+            const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+            const sidebar = document.getElementById('sidebar');
+            const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+
+            if (btnToggleSidebar && sidebar && sidebarBackdrop) {
+                btnToggleSidebar.addEventListener('click', function() {
+                    sidebar.classList.toggle('sidebar--open');
+                    sidebarBackdrop.classList.toggle('active');
+                });
+
+                sidebarBackdrop.addEventListener('click', function() {
+                    sidebar.classList.remove('sidebar--open');
+                    sidebarBackdrop.classList.remove('active');
+                });
+            }
+
             const userName = localStorage.getItem('user_name') || 'Guru SLB';
             const userDisplay = document.getElementById('user-display-name');
             const avatarDisplay = document.getElementById('user-display-avatar');
