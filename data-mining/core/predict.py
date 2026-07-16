@@ -1,6 +1,7 @@
 import joblib
 import re
 import pandas as pd
+import numpy as np
 
 def clean_text(text):
     if not isinstance(text, str):
@@ -10,50 +11,55 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def predict_assessment(text, nilai):
-    """Predicts Aspect and Label from achievement description and score."""
+def predict_assessment(text, nilai, aspek):
+    """Predicts Status Perkembangan from achievement description, score, and aspect/subject."""
     try:
         # Load components
         model = joblib.load("slb_model.joblib")
         tfidf = joblib.load("tfidf_vectorizer.joblib")
         encoders = joblib.load("label_encoders.joblib")
+        ohe = joblib.load("onehot_encoder.joblib")
         
         # Preprocess
         cleaned = clean_text(text)
         X_tfidf = tfidf.transform([cleaned]).toarray()
         
+        # OHE aspect
+        X_aspek = ohe.transform(pd.DataFrame([[aspek]], columns=['Aspek / Mapel']))
+        
         # Combine with Nilai
-        import numpy as np
         X_nilai = np.array([[float(nilai)]])
-        X = np.hstack([X_nilai, X_tfidf])
+        X = np.hstack([X_nilai, X_tfidf, X_aspek])
         
         # Predict
         preds = model.predict(X)
         
         # Decode
-        aspek = encoders['le_aspek'].inverse_transform([preds[0][0]])[0]
-        label = encoders['le_label'].inverse_transform([preds[0][1]])[0]
+        label = encoders['le_label'].inverse_transform([preds[0]])[0]
         
         return {
-            'Aspek / Mapel': aspek,
-            'Label': label
+            'Status Perkembangan': label
         }
     except Exception as e:
         return {"error": str(e)}
 
 if __name__ == "__main__":
     print("-" * 30)
-    print("SLB Prediction System")
+    print("SLB Prediction System (Single-Output)")
     print("-" * 30)
+    sample_aspek = input("Masukkan Aspek / Mapel (misal: Matematika): ")
     sample_text = input("Masukkan Deskripsi Capaian: ")
     sample_nilai = input("Masukkan Nilai (0-100): ")
     
+    if not sample_aspek:
+        sample_aspek = "PAI & Budi Pekerti"
     if not sample_text:
         sample_text = "Siswa mampu membaca huruf hijaiyah dengan lancar dan memahami kandungan surah pendek."
     if not sample_nilai:
         sample_nilai = 85
     
-    result = predict_assessment(sample_text, sample_nilai)
+    result = predict_assessment(sample_text, sample_nilai, sample_aspek)
     print("\nHasil Prediksi:")
-    print(f"- Aspek / Mapel: {result.get('Aspek / Mapel')}")
-    print(f"- Label Prediksi: {result.get('Label')}")
+    print(f"- Aspek / Mapel Input: {sample_aspek}")
+    print(f"- Status Perkembangan Prediksi: {result.get('Status Perkembangan')}")
+

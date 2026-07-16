@@ -21,3 +21,6 @@ frontend/database/*.sqlite
 
 # Environment variables
 backend/.env
+
+# Ignore perhitungan_manual folder completely
+data-mining/perhitungan_manual/
