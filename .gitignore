@@ -1,11 +1,14 @@
 DATA MENTAH.xlsx
 Prosposal Skripsi - Revisi Sempro.pdf
 *.joblib
+!data-mining/core/*.joblib
+!backend/models_ml/*.joblib
 *.csv
 *.xlsx
 *.pdf
 *.docm
 *.docx
+*.png
 .venv
 venv/
 frontend/vendor/

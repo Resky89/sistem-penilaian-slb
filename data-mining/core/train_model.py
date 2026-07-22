@@ -112,10 +112,15 @@ def load_split_data_with_recovery(split_path, raw_path):
     tr['Set Data'] = 'Training'
     te['Set Data'] = 'Testing'
     
-    df = pd.concat([tr, te], ignore_index=True)
+    tr['Nilai'] = pd.to_numeric(tr['Nilai'], errors='coerce')
+    te['Nilai'] = pd.to_numeric(te['Nilai'], errors='coerce')
     
-    df['Nilai'] = pd.to_numeric(df['Nilai'], errors='coerce')
-    df['Nilai'] = df['Nilai'].fillna(df['Nilai'].mean() if not df['Nilai'].isna().all() else 0)
+    # Imputasi nilai kosong (missing values) menggunakan rata-rata dari data training
+    train_mean = tr['Nilai'].mean() if not tr['Nilai'].isna().all() else 0
+    tr['Nilai'] = tr['Nilai'].fillna(train_mean)
+    te['Nilai'] = te['Nilai'].fillna(train_mean)
+
+    df = pd.concat([tr, te], ignore_index=True)
     
     df.dropna(subset=['Deskripsi Penilaian', 'Aspek / Mapel', 'Status Perkembangan'], inplace=True)
     df['Deskripsi Penilaian'] = df['Deskripsi Penilaian'].astype(str).str.replace(r'(?i)deskripsi perkembangan\s*:\s*', '', regex=True)
@@ -129,25 +134,28 @@ def train_system_smote():
     # Langkah 2: Text Preprocessing
     df['clean_X2'] = df['Deskripsi Penilaian'].apply(clean_text)
     
-    # Langkah 4: One Hot Encoding (untuk fitur kategori Aspek / Mapel)
+    # Tentukan mask data training dan testing
+    train_mask = (df['Set Data'] == 'Training').values
+    test_mask = (df['Set Data'] == 'Testing').values
+
+    # Langkah 3: Label Encoding 
     le_label = LabelEncoder()
-    y = le_label.fit_transform(df['Status Perkembangan'])
+    y_train = le_label.fit_transform(df.loc[train_mask, 'Status Perkembangan'])
+    y_test = le_label.transform(df.loc[test_mask, 'Status Perkembangan'])
     
     try:
         ohe = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
     except TypeError:
         ohe = OneHotEncoder(sparse=False, handle_unknown='ignore')
         
-    X_aspek = ohe.fit_transform(df[['Aspek / Mapel']])
+    ohe.fit(df.loc[train_mask, ['Aspek / Mapel']])
+    X_aspek = ohe.transform(df[['Aspek / Mapel']])
     aspek_cols = [f'aspek_{a}' for a in ohe.categories_[0]]
     
     encoders = {'le_label': le_label}
     OHE_PATH = os.path.join(os.path.dirname(MODEL_PATH), "onehot_encoder.joblib")
 
-    train_mask = (df['Set Data'] == 'Training').values
-    test_mask = (df['Set Data'] == 'Testing').values
-
-    # Langkah 3: TF-IDF (Ekstraksi Fitur Teks)
+    # Langkah 4: Pembobotan TF-IDF
     tfidf = TfidfVectorizer(max_features=500, ngram_range=(1, 1)) 
     tfidf.fit(df.loc[train_mask, 'clean_X2'])
     X_tfidf = tfidf.transform(df['clean_X2']).toarray()
@@ -155,9 +163,9 @@ def train_system_smote():
     X_nilai = df[['Nilai']].values
     X = np.hstack([X_nilai, X_tfidf, X_aspek])
     
-    # Split Train-Test
+    # Pembagian dataset menjadi data training (X_train) dan data testing (X_test)
     X_train, X_test = X[train_mask], X[test_mask]
-    y_train, y_test = y[train_mask], y[test_mask]
+    y_train, y_test = y_train, y_test
 
     # Langkah 5: SMOTE (Oversampling Data Latih)
     print(f"Original training distribution for Status Perkembangan (Y): {dict(pd.Series(y_train).value_counts())}")
@@ -204,14 +212,16 @@ def train_system_smote():
     
     # Gambar Matriks Kebingungan (Confusion Matrix)
     cm = confusion_matrix(y_test, y_pred, labels=unique_test)
+    ROOT_DIR = r"d:\projects\Sistem-Penilaian-SLB"
     plt.figure(figsize=(10, 7))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=target_names)
     disp.plot(cmap=plt.cm.Blues, xticks_rotation='vertical')
     plt.title("Confusion Matrix: Status Perkembangan")
     plt.tight_layout()
-    plt.savefig("confusion_matrix_Status_Perkembangan.png")
+    cm_path = os.path.join(ROOT_DIR, "confusion_matrix_Status_Perkembangan.png")
+    plt.savefig(cm_path)
     plt.close()
-    print("Confusion Matrix saved: confusion_matrix_Status_Perkembangan.png")
+    print(f"Confusion Matrix saved to: {cm_path}")
 
     # Langkah 8: SHAP (Explainable AI / Interpretasi Model)
     print("\nGenerating SHAP explanations...")
@@ -221,14 +231,43 @@ def train_system_smote():
     explainer = shap.TreeExplainer(best_model)
     shap_values = explainer.shap_values(X_sample)
     
-    plt.figure(figsize=(12, 8))
-    shap.summary_plot(shap_values, X_sample, feature_names=feature_names_all, show=False)
-    plt.title("SHAP Summary: Status Perkembangan")
-    plt.tight_layout()
-    plt.savefig("shap_summary_Status_Perkembangan.png")
-    plt.close()
+    # Since shap_values is a numpy array of shape (samples, features, classes),
+    # slice it along the classes axis to generate separate beeswarm plots for each class
+    classes = ['Baik', 'Cukup', 'Perlu Bimbingan']
+    for i, c_name in enumerate(classes):
+        plt.figure(figsize=(10, 6))
+        shap.summary_plot(shap_values[:, :, i], X_sample, feature_names=feature_names_all, show=False)
+        plt.title(f"SHAP Summary: Kelas {c_name}", fontsize=14)
+        plt.tight_layout()
+        filename = f"shap_summary_{c_name.replace(' ', '_')}.png"
+        filepath = os.path.join(ROOT_DIR, filename)
+        plt.savefig(filepath, bbox_inches='tight')
+        plt.close()
+        print(f"SHAP plot for {c_name} saved to: {filepath}")
     
-    print("SHAP plot saved: shap_summary_Status_Perkembangan.png")
+    # Generate global bar plot with custom legend
+    plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_values, X_sample, feature_names=feature_names_all, plot_type='bar', show=False)
+    ax = plt.gca()
+    legend = ax.get_legend()
+    if legend:
+        handles = legend.legend_handles
+        orig_labels = [t.get_text() for t in legend.get_texts()]
+        class_mapping = {
+            'Class 0': 'Baik',
+            'Class 1': 'Cukup',
+            'Class 2': 'Perlu Bimbingan'
+        }
+        new_labels = [class_mapping.get(lbl, lbl) for lbl in orig_labels]
+        ax.legend(handles, new_labels, loc='lower right')
+    plt.title("SHAP Summary Global: Status Perkembangan", fontsize=14)
+    plt.tight_layout()
+    bar_path = os.path.join(ROOT_DIR, "shap_summary_bar_global.png")
+    plt.savefig(bar_path, bbox_inches='tight')
+    plt.close()
+    print(f"SHAP global bar plot saved to: {bar_path}")
+    
+    print("SHAP beeswarm plots saved for all classes.")
 
     # Menyimpan file model dan pemroses data secara lokal
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
